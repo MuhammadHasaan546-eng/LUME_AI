@@ -5,6 +5,7 @@ import { ThemeProvider } from "next-themes";
 import "./index.css";
 import Layout from "./components/home/Layout.jsx";
 import Home from "./pages/home/Home.jsx";
+import LoginModal from "./components/Auth/LoginModal";
 const router = createBrowserRouter([
   {
     path: "/",
@@ -13,6 +14,10 @@ const router = createBrowserRouter([
       {
         index: true,
         element: <Home />,
+      },
+      {
+        path: "/login",
+        element: <LoginModal />,
       },
       // {
       //   path: "dashboard",

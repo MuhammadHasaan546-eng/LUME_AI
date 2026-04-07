@@ -10,6 +10,7 @@ import {
   SheetHeader,
 } from "@/components/ui/sheet";
 import { Menu, Sparkles } from "lucide-react";
+import LoginModal from "../Auth/LoginModal";
 
 const navItems = [
   { name: "Features", href: "#" },
@@ -63,16 +64,14 @@ const Header = () => {
           <ModeToggle />
 
           {/* Desktop Buttons */}
-          <div className="hidden md:flex items-center gap-3">
-            <Button variant="ghost" size="sm" className="font-medium">
-              Log in
-            </Button>
-            <Button
-              size="sm"
-              className="bg-primary shadow-lg shadow-primary/20 hover:shadow-primary/40 transition-all font-semibold"
-            >
-              Start Building
-            </Button>
+          <div className="hidden md:flex items-center gap-4">
+            <LoginModal>
+              <Button variant="ghost">Log in</Button>
+            </LoginModal>
+
+            <LoginModal>
+              <Button className="bg-primary">Start Building</Button>
+            </LoginModal>
           </div>
 
           {/* Mobile Menu Button */}
