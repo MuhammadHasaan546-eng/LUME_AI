@@ -6,6 +6,10 @@ import "./index.css";
 import Layout from "./components/home/Layout.jsx";
 import Home from "./pages/home/Home.jsx";
 import LoginModal from "./components/Auth/LoginModal";
+import { Provider } from "react-redux";
+import store from "./store/store";
+import { getCurrentUser } from "./api/getUser";
+
 const router = createBrowserRouter([
   {
     path: "/",
@@ -14,6 +18,9 @@ const router = createBrowserRouter([
       {
         index: true,
         element: <Home />,
+        loader: async () => {
+          store.dispatch(getCurrentUser());
+        },
       },
       {
         path: "/login",
@@ -32,8 +39,10 @@ const router = createBrowserRouter([
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>
-    <ThemeProvider attribute="class" defaultTheme="dark">
-      <RouterProvider router={router} />
-    </ThemeProvider>
+    <Provider store={store}>
+      <ThemeProvider attribute="class" defaultTheme="dark">
+        <RouterProvider router={router} />
+      </ThemeProvider>
+    </Provider>
   </StrictMode>,
 );

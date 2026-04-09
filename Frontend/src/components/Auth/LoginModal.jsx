@@ -13,12 +13,21 @@ import { Separator } from "@/components/ui/separator";
 import { Sparkles } from "lucide-react"; // Sirf Sparkles rakha hai jo kaam kar raha hai
 import { signInWithPopup } from "firebase/auth";
 import { auth, provider } from "@/config/firebase";
+import { useDispatch } from "react-redux";
+import { login } from "@/api/auth";
 
 const LoginModal = ({ children }) => {
+  const dispatch = useDispatch();
+
   const handleGoogleLogin = async () => {
     try {
       const result = await signInWithPopup(auth, provider);
-      console.log(result);
+      const userData = {
+        email: result.user.email,
+        name: result.user.displayName,
+        avatar: result.user.photoURL,
+      };
+      dispatch(login(userData));
     } catch (error) {
       console.log(error);
     }
