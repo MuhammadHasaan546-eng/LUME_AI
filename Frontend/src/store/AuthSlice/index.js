@@ -21,6 +21,7 @@ const authSlice = createSlice({
         state.isLoading = false;
         state.user = action.payload.user;
         state.token = action.payload.token;
+        console.log("User logged in:", action.payload);
       })
       .addCase(login.rejected, (state) => {
         state.isLoading = false;
@@ -32,8 +33,9 @@ const authSlice = createSlice({
       })
       .addCase(getCurrentUser.fulfilled, (state, action) => {
         state.isLoading = false;
-        state.user = action.payload.user;
-        state.token = action.payload.token;
+        state.user = action.payload.data.user;
+        state.token = action.payload.data.token;
+        console.log("User data fetched:", action.payload);
       })
       .addCase(getCurrentUser.rejected, (state) => {
         state.isLoading = false;

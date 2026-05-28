@@ -19,7 +19,7 @@ const router = createBrowserRouter([
         index: true,
         element: <Home />,
         loader: async () => {
-          store.dispatch(getCurrentUser());
+          await store.dispatch(getCurrentUser());
         },
       },
       {

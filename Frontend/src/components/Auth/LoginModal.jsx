@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react"; // useState import kiya
 import { motion } from "framer-motion";
 import {
   Dialog,
@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { Sparkles } from "lucide-react"; // Sirf Sparkles rakha hai jo kaam kar raha hai
+import { Sparkles } from "lucide-react";
 import { signInWithPopup } from "firebase/auth";
 import { auth, provider } from "@/config/firebase";
 import { useDispatch } from "react-redux";
@@ -18,23 +18,33 @@ import { login } from "@/api/auth";
 
 const LoginModal = ({ children }) => {
   const dispatch = useDispatch();
+  // Modal ki open/close state ko control karne ke liye
+  const [open, setOpen] = useState(false);
 
   const handleGoogleLogin = async () => {
     try {
       const result = await signInWithPopup(auth, provider);
+      console.log(result.user);
+
       const userData = {
         email: result.user.email,
         name: result.user.displayName,
         avatar: result.user.photoURL,
       };
+
+      // 1. Redux store mein login data bheja
       dispatch(login(userData));
+
+      // 2. Successful login ke baad modal ko automatic close kar diya
+      setOpen(false);
     } catch (error) {
-      console.log(error);
+      console.log("Login error:", error);
     }
   };
 
   return (
-    <Dialog>
+    // open aur onOpenChange props lagaye taake state manually handle ho sake
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         {children || <Button>Log in</Button>}
       </DialogTrigger>
@@ -61,7 +71,7 @@ const LoginModal = ({ children }) => {
           </DialogHeader>
 
           <div className="grid gap-4 py-8 px-2">
-            {/* GOOGLE BUTTON (Direct SVG) */}
+            {/* GOOGLE BUTTON */}
             <Button
               variant="outline"
               className="h-12 gap-3 font-bold border-primary/10 hover:bg-primary/5 hover:border-primary/20 transition-all w-full"
@@ -96,7 +106,7 @@ const LoginModal = ({ children }) => {
               <Separator className="flex-1 bg-primary/10" />
             </div>
 
-            {/* GITHUB BUTTON (Direct SVG - No Import Required) */}
+            {/* GITHUB BUTTON */}
             <Button
               variant="outline"
               className="h-12 gap-3 border-primary/10 hover:bg-primary/5 transition-all font-semibold w-full"

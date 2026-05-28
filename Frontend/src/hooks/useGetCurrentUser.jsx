@@ -1,5 +1,5 @@
 import { getCurrentUser } from "@/api/getUser";
-import React from "react";
+import { useEffect } from "react";
 import { useDispatch } from "react-redux";
 
 export default function useGetCurrentUser() {

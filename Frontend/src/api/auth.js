@@ -13,10 +13,11 @@ export const login = createAsyncThunk(
         },
         withCredentials: true,
       });
+      console.log(res.data, "fetch");
 
       if (res.data.token) {
         localStorage.setItem("token", res.data.token);
-        console.log(res.data.token);
+        console.log(res.data.token, "fetch");
       }
 
       return res.data;
