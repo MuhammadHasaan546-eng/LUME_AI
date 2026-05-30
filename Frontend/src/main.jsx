@@ -9,6 +9,7 @@ import LoginModal from "./components/Auth/LoginModal";
 import { Provider } from "react-redux";
 import store from "./store/store";
 import { getCurrentUser } from "./api/getUser";
+import { Toaster } from "./components/ui/sonner";
 
 const router = createBrowserRouter([
   {
@@ -42,6 +43,7 @@ createRoot(document.getElementById("root")).render(
     <Provider store={store}>
       <ThemeProvider attribute="class" defaultTheme="dark">
         <RouterProvider router={router} />
+        <Toaster />
       </ThemeProvider>
     </Provider>
   </StrictMode>,

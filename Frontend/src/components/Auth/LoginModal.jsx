@@ -15,6 +15,7 @@ import { signInWithPopup } from "firebase/auth";
 import { auth, provider } from "@/config/firebase";
 import { useDispatch } from "react-redux";
 import { login } from "@/api/auth";
+import { toast } from "sonner";
 
 const LoginModal = ({ children }) => {
   const dispatch = useDispatch();
@@ -37,8 +38,10 @@ const LoginModal = ({ children }) => {
 
       // 2. Successful login ke baad modal ko automatic close kar diya
       setOpen(false);
+      toast.success("Logged in successfully!");
     } catch (error) {
       console.log("Login error:", error);
+      toast.error("Failed to log in.");
     }
   };
 

@@ -13,7 +13,6 @@ export const login = createAsyncThunk(
         },
         withCredentials: true,
       });
-      console.log(res.data, "fetch");
 
       if (res.data.token) {
         localStorage.setItem("token", res.data.token);
@@ -32,3 +31,22 @@ export const login = createAsyncThunk(
     }
   },
 );
+
+export const logout = createAsyncThunk("auth/logout", async (_, thunkAPI) => {
+  try {
+    const res = await axios.post(
+      `${BASE_URL}/api/auth/logout`,
+      {},
+      {
+        withCredentials: true,
+      },
+    );
+
+    return res.data;
+  } catch (error) {
+    const message = error.response.data.message || "Server side error";
+
+    console.error("Logout Error:", message);
+    return thunkAPI.rejectWithValue(message);
+  }
+});

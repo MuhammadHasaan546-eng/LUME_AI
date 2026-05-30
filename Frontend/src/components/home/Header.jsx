@@ -38,6 +38,8 @@ import {
   Mail,
   Coins,
 } from "lucide-react";
+import { logout } from "@/api/auth";
+import { toast } from "sonner";
 
 const navItems = [
   { name: "Features", href: "#" },
@@ -64,8 +66,8 @@ const Header = () => {
   };
 
   const handleLogout = () => {
-    // dispatch(logout());
-    console.log("Logged out successfully");
+    dispatch(logout());
+    toast.success("Logged out successfully!");
   };
 
   return (

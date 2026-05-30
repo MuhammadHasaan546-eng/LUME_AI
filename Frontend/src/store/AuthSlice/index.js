@@ -1,5 +1,5 @@
 import { createSlice } from "@reduxjs/toolkit";
-import { login } from "@/api/auth";
+import { login, logout } from "@/api/auth";
 import { getCurrentUser } from "@/api/getUser";
 
 const initialState = {
@@ -19,9 +19,16 @@ const authSlice = createSlice({
       })
       .addCase(login.fulfilled, (state, action) => {
         state.isLoading = false;
-        state.user = action.payload.user;
-        state.token = action.payload.token;
-        console.log("User logged in:", action.payload);
+
+        const userData = action.payload.data.user;
+        const userToken = action.payload.data.token;
+
+        state.user = userData;
+        state.token = userToken;
+
+        if (userToken) {
+          localStorage.setItem("token", userToken);
+        }
       })
       .addCase(login.rejected, (state) => {
         state.isLoading = false;
@@ -38,6 +45,20 @@ const authSlice = createSlice({
         console.log("User data fetched:", action.payload);
       })
       .addCase(getCurrentUser.rejected, (state) => {
+        state.isLoading = false;
+      });
+
+    builder
+      .addCase(logout.pending, (state) => {
+        state.isLoading = true;
+      })
+      .addCase(logout.fulfilled, (state) => {
+        state.isLoading = false;
+        state.user = null;
+        state.token = null;
+        localStorage.clear();
+      })
+      .addCase(logout.rejected, (state) => {
         state.isLoading = false;
       });
   },
