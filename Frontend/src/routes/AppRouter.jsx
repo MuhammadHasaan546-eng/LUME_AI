@@ -4,6 +4,9 @@ import Home from "@/pages/public/Home";
 import LoginModal from "@/components/Auth/LoginModal";
 import { getCurrentUser } from "@/api/getUser";
 import store from "@/store/store";
+import { CheckAuth } from "@/components/Auth/CheckAuth";
+import Dashboard from "@/pages/client/Dashboard";
+import GeneratePage from "@/pages/client/Generate";
 
 export const AppRouter = () => {
   const router = createBrowserRouter([
@@ -20,16 +23,29 @@ export const AppRouter = () => {
         },
         {
           path: "/login",
-          element: <LoginModal />,
+          element: (
+            <CheckAuth>
+              <LoginModal />
+            </CheckAuth>
+          ),
         },
-        // {
-        //   path: "dashboard",
-        //   element: <Dashboard />,
-        //   loader: async () => {
-        //     return fetch("/api/user-data");
-        //   },
-        // },
       ],
+    },
+    {
+      path: "dashboard",
+      element: (
+        // <CheckAuth>
+        <Dashboard />
+        // </CheckAuth>
+      ),
+    },
+    {
+      path: "generate",
+      element: (
+        // <CheckAuth>
+        <GeneratePage />
+        // </CheckAuth>
+      ),
     },
   ]);
 
