@@ -3,6 +3,7 @@ import { login, logout } from "@/api/auth";
 import { getCurrentUser } from "@/api/getUser";
 
 const initialState = {
+  isAuthenticated: false,
   user: null,
   token: null,
   isLoading: true,
@@ -19,6 +20,7 @@ const authSlice = createSlice({
       })
       .addCase(login.fulfilled, (state, action) => {
         state.isLoading = false;
+        state.isAuthenticated = true;
 
         const userData = action.payload.data.user;
         const userToken = action.payload.data.token;
@@ -32,6 +34,7 @@ const authSlice = createSlice({
       })
       .addCase(login.rejected, (state) => {
         state.isLoading = false;
+        state.isAuthenticated = false;
       });
 
     builder
@@ -42,10 +45,12 @@ const authSlice = createSlice({
         state.isLoading = false;
         state.user = action.payload.data.user;
         state.token = action.payload.data.token;
+        state.isAuthenticated = true;
         console.log("User data fetched:", action.payload);
       })
       .addCase(getCurrentUser.rejected, (state) => {
         state.isLoading = false;
+        state.isAuthenticated = false;
       });
 
     builder
@@ -57,9 +62,11 @@ const authSlice = createSlice({
         state.user = null;
         state.token = null;
         localStorage.clear();
+        state.isAuthenticated = false;
       })
       .addCase(logout.rejected, (state) => {
         state.isLoading = false;
+        state.isAuthenticated = false;
       });
   },
 });
