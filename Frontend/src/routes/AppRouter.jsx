@@ -8,17 +8,30 @@ import { CheckAuth } from "@/components/Auth/CheckAuth";
 import Dashboard from "@/pages/client/Dashboard";
 import GeneratePage from "@/pages/client/Generate";
 
+// 1. Loading component
+const PageLoader = () => (
+  <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+    <h3>Loading App...</h3>
+  </div>
+);
+
 export const AppRouter = () => {
   const router = createBrowserRouter([
     {
       path: "/",
       element: <Layout />,
+      HydrateFallback: PageLoader,
       children: [
         {
           index: true,
           element: <Home />,
           loader: async () => {
-            await store.dispatch(getCurrentUser());
+            try {
+              await store.dispatch(getCurrentUser()).unwrap();
+            } catch (error) {
+              console.log("User not logged in", error);
+            }
+            return null;
           },
         },
         {
@@ -33,21 +46,18 @@ export const AppRouter = () => {
     },
     {
       path: "dashboard",
-      element: (
-        // <CheckAuth>
-        <Dashboard />
-        // </CheckAuth>
-      ),
+      element: <Dashboard />,
     },
     {
       path: "generate",
-      element: (
-        // <CheckAuth>
-        <GeneratePage />
-        // </CheckAuth>
-      ),
+      element: <GeneratePage />,
     },
   ]);
 
-  return <RouterProvider router={router} />;
+  return (
+    <RouterProvider
+      router={router}
+      fallbackElement={<PageLoader />}
+    />
+  );
 };
