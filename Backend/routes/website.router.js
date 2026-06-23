@@ -22,7 +22,6 @@ router.post(
   validate(generateWebsiteValidation),
   generateWebSite,
 );
-router.get("/websites", IsAuth, getUserWebsites);
 
 router.put(
   "/website-update",

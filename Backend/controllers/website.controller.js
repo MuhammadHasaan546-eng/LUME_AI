@@ -212,10 +212,54 @@ export const generateWebSite = wrapAsync(async (req, res) => {
     throw new ExpressError("AI generation failed. Please try again.", 502);
   }
 
-  try {
-    const parsedResponse = parseAIWebsiteResponse(aiResponse);
-    console.log(parsedResponse);
+  let parsedResponse = { message: "Website generated successfully", code: "" };
 
+  try {
+    // 1. Pehle normal parsing try karein
+    parsedResponse = parseAIWebsiteResponse(aiResponse);
+  } catch (e) {
+    console.warn(
+      "Standard parsing failed, applying robust regex cleanup...",
+      e,
+    );
+
+    // 2. FALLBACK SAFETAEY: Agar standard parse fail ho jaye, toh raw text se HTML nikalein
+    let cleanText = aiResponse.trim();
+
+    // Markdown syntax saaf karein (```json ... ``` ya ```html ... ```)
+    if (cleanText.startsWith("```")) {
+      cleanText = cleanText
+        .replace(/^```[a-zA-Z]*\n/, "")
+        .replace(/\n```$/, "")
+        .trim();
+    }
+
+    // Agar pure JSON text ke andar object form mein code aaya hai
+    if (cleanText.includes('"code":') || cleanText.includes("'code':")) {
+      try {
+        const directJson = JSON.parse(cleanText);
+        parsedResponse.code = directJson.code;
+        if (directJson.message) parsedResponse.message = directJson.message;
+      } catch (innerError) {
+        // Agar JSON parse ab bhi fail ho, toh direct string ko hi code maan lein
+        parsedResponse.code = cleanText;
+      }
+    } else {
+      // Agar AI ne bina JSON format ke direct code bhej diya hai
+      parsedResponse.code = cleanText;
+    }
+  }
+
+  // Double check ke code empty na ho
+  if (!parsedResponse.code || parsedResponse.code.trim() === "") {
+    throw new ExpressError(
+      "AI response was empty or invalid. Please try again.",
+      502,
+    );
+  }
+
+  try {
+    // Unique slug generator
     const slug =
       parsedResponse.message
         .slice(0, 60)
@@ -225,9 +269,10 @@ export const generateWebSite = wrapAsync(async (req, res) => {
       "-" +
       Date.now().toString(36);
 
+    // Database mein website entry create karein
     const website = await Website.create({
       user: req.user.id,
-      title: parsedResponse.message,
+      title: parsedResponse.message.slice(0, 100), // Safety check string length
       slug,
       latestCode: parsedResponse.code,
       conversations: [
@@ -242,33 +287,40 @@ export const generateWebSite = wrapAsync(async (req, res) => {
       ],
     });
 
+    // Credits minus aur save karein
     user.credits -= GENERATE_COST;
     await user.save();
 
+    // Clean JSON Object response bhejain frontend ko
     return res.status(200).json(
       new ApiResponse(
         200,
         {
           websiteId: website._id,
-          latestCode: website.latestCode,
+          latestCode: website.latestCode, // Yeh ab bilkul saaf HTML/Code string hogi
           title: website.title,
+          conversations: website.conversations,
           createdAt: website.createdAt,
           credits: user.credits,
         },
         "Website generated successfully",
       ),
     );
-  } catch (e) {
-    console.warn("Failed to parse AI response as JSON", e);
+  } catch (error) {
+    console.error("Database or final compilation error:", error);
     throw new ExpressError(
-      "Invalid AI response format. Please try again.",
-      502,
+      "Failed to save generated website context. Please try again.",
+      500,
     );
   }
 });
 
 export const updateWebsite = wrapAsync(async (req, res) => {
   const { websiteId, prompt } = req.body;
+
+  if (!websiteId || !prompt) {
+    throw new ExpressError("Website ID and prompt are required", 400);
+  }
 
   const user = await User.findById(req.user.id);
   if (!user) {
@@ -304,39 +356,89 @@ export const updateWebsite = wrapAsync(async (req, res) => {
     throw new ExpressError("AI generation failed. Please try again.", 502);
   }
 
-  let parsedResponse = aiResponse;
-  try {
-    parsedResponse = parseAIWebsiteResponse(aiResponse);
+  // Fallback parsing object initialize karein
+  let parsedResponse = { message: "Website updated successfully", code: "" };
 
-    website.title = parsedResponse.message;
-    website.latestCode = parsedResponse.code;
+  try {
+    // 1. Pehle standard JSON parsing check karein
+    parsedResponse = parseAIWebsiteResponse(aiResponse);
+  } catch (e) {
+    console.warn(
+      "Standard parsing failed on update, applying robust cleanup...",
+      e,
+    );
+
+    // 2. FALLBACK LAYER: Markdown aur raw strings saaf karein
+    let cleanText = aiResponse.trim();
+
+    if (cleanText.startsWith("```")) {
+      cleanText = cleanText
+        .replace(/^```[a-zA-Z]*\n/, "")
+        .replace(/\n```$/, "")
+        .trim();
+    }
+
+    // Agar direct code key mojood hai text mein
+    if (cleanText.includes('"code":') || cleanText.includes("'code':")) {
+      try {
+        const directJson = JSON.parse(cleanText);
+        parsedResponse.code = directJson.code;
+        if (directJson.message) parsedResponse.message = directJson.message;
+      } catch (innerError) {
+        parsedResponse.code = cleanText;
+      }
+    } else {
+      // Agar direct code/HTML string bhej di hai AI ne
+      parsedResponse.code = cleanText;
+    }
+  }
+
+  // Safety Check: Code khali nahi hona chahiye
+  if (!parsedResponse.code || parsedResponse.code.trim() === "") {
+    throw new ExpressError(
+      "AI updated code was empty or invalid. Please try again.",
+      502,
+    );
+  }
+
+  try {
+    // Website document update karein
+    website.title = parsedResponse.message.slice(0, 100);
+    website.latestCode = parsedResponse.code; // Yeh ab guaranteed clean code/HTML hoga
+
     website.conversations.push(
       { role: "user", content: prompt },
       { role: "ai", content: parsedResponse.message },
     );
     await website.save();
 
+    // User credits deduct karein
     user.credits -= UPDATE_COST;
     await user.save();
-  } catch (e) {
-    console.warn("Failed to parse AI response as JSON", e);
+
+    // Sahi clean object frontend ko return karein
+    return res.status(200).json(
+      new ApiResponse(
+        200,
+        {
+          websiteId: website._id,
+          title: website.title,
+          latestCode: website.latestCode,
+          conversations: website.conversations,
+          updatedAt: website.updatedAt,
+          credits: user.credits,
+        },
+        "Website updated successfully",
+      ),
+    );
+  } catch (error) {
+    console.error("Database saving error during update:", error);
+    throw new ExpressError(
+      "Failed to save website changes. Please try again.",
+      500,
+    );
   }
-
-  return res.status(200).json(
-    new ApiResponse(
-      200,
-      {
-        websiteId: website._id,
-        title: website.title,
-        latestCode: website.latestCode,
-        updatedAt: website.updatedAt,
-        credits: user.credits,
-      },
-      "Website updated successfully",
-    ),
-  );
 });
-
 export const getUserWebsites = wrapAsync(async (req, res) => {
   const websites = await Website.find({ user: req.user.id })
     .select("title slug deployed deployedUrl createdAt updatedAt")

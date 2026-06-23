@@ -1,11 +1,10 @@
-import React, { useState, useEffect } from "react";
+import React, { useMemo, useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowLeft,
   Sparkles,
   Eye,
   Code,
-  Zap,
   RefreshCw,
   Monitor,
   Smartphone,
@@ -17,20 +16,34 @@ import {
   Layers,
   Terminal,
   ChevronRight,
-  Maximize2,
+  Sun,
+  Moon,
+  MessageSquare,
+  Columns,
 } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
+import { useTheme } from "next-themes";
 import { toast } from "sonner";
+import Editor from "@monaco-editor/react";
 import { getWebsiteById, updateWebsite } from "@/api/website";
+import { setThemePreference } from "@/store/theme";
 
 const EditorPage = () => {
   const navigate = useNavigate();
   const { codeId } = useParams();
   const dispatch = useDispatch();
-  const { isLoading, latestCode } = useSelector((state) => state.website);
+  const { setTheme } = useTheme();
+  const chatEndRef = useRef(null);
+  const { isLoading, latestCode, currentWebsite } = useSelector(
+    (state) => state.website,
+  );
+  const { selectedTheme, resolvedTheme } = useSelector((state) => state.theme);
+  const isDark = resolvedTheme === "dark";
+  const controlClass =
+    "bg-card border-border text-muted-foreground hover:border-primary/30 hover:text-foreground";
 
-  // States
+  // Core Data States
   const [code, setCode] = useState(
     latestCode || "<!-- Write or generate your layout here -->",
   );
@@ -38,9 +51,17 @@ const EditorPage = () => {
   const [previewMode, setPreviewMode] = useState("desktop"); // desktop, tablet, mobile
   const [copied, setCopied] = useState(false);
   const [isCompiling, setIsCompiling] = useState(false);
+
+  // Sidebar Left Navigation
   const [activeSidebarTab, setActiveSidebarTab] = useState("ai"); // ai, layers, terminal
 
-  // Sync with redux state if code changes via background generation
+  // Desktop Focus View Mode
+  const [desktopFocusView, setDesktopFocusView] = useState("split");
+
+  // Mobile Display View Toggle
+  const [mobileActiveView, setMobileActiveView] = useState("editor");
+
+  // Sync state with background data stream
   useEffect(() => {
     if (latestCode) {
       setCode(latestCode);
@@ -53,11 +74,11 @@ const EditorPage = () => {
     dispatch(getWebsiteById(codeId))
       .unwrap()
       .catch((err) => {
-        toast.error(err || "Failed to load website.");
+        toast.error(err || "Failed to load website workspace.");
       });
   }, [codeId, dispatch]);
 
-  // Handle AI iterative generation inside editor
+  // AI Prompt Stream Iteration
   const handleIterativeGenerate = async (e) => {
     e.preventDefault();
     if (!prompt.trim() || !codeId) return;
@@ -66,41 +87,47 @@ const EditorPage = () => {
       const response = await dispatch(
         updateWebsite({ websiteId: codeId, prompt: prompt.trim() }),
       ).unwrap();
-      toast.success(response.message || "Layout updated successfully!");
+      toast.success(response.message || "Canvas layout synchronized!");
       setPrompt("");
+
+      setDesktopFocusView("preview");
+      if (window.innerWidth < 1024) {
+        setMobileActiveView("preview");
+      }
     } catch (err) {
-      toast.error(err || "Failed to update layout.");
+      toast.error(err || "Iterative generation failed.");
     }
   };
 
-  // Live Refresh Canvas manual simulation
   const handleRunCode = () => {
     setIsCompiling(true);
     setTimeout(() => {
       setIsCompiling(false);
-      toast.success("Canvas updated smoothly.");
+      toast.success("Sandbox engine refreshed smoothly.");
+      setDesktopFocusView("preview");
+      if (window.innerWidth < 1024) {
+        setMobileActiveView("preview");
+      }
     }, 800);
   };
 
-  // Copy code utility
   const handleCopyCode = async () => {
     try {
       await navigator.clipboard.writeText(code);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-      toast.success("Code copied to clipboard");
+      toast.success("Code clipboard copy verified.");
     } catch {
-      toast.error("Failed to copy code");
+      toast.error("Failed to copy matrix source.");
     }
   };
 
-  // Download code utility
   const handleDownload = () => {
     const blob = new Blob([code], { type: "text/html" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "lume-editor-build.html";
+    a.download = "lume-studio-build.html";
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -113,98 +140,259 @@ const EditorPage = () => {
     mobile: "375px",
   };
 
+  const conversations = currentWebsite?.conversations || [];
+
+  const handleThemeChange = (theme) => {
+    dispatch(setThemePreference(theme));
+    setTheme(theme);
+  };
+
+  const toggleTheme = () => {
+    handleThemeChange(isDark ? "light" : "dark");
+  };
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [conversations.length]);
+
+  const previewCode = useMemo(() => {
+    const sandboxGuard = `
+<base href="about:srcdoc">
+<script>
+  document.addEventListener('click', function (event) {
+    var link = event.target.closest && event.target.closest('a[href]');
+    if (!link) return;
+    var href = link.getAttribute('href') || '';
+    if (!href || href === '#' || href.charAt(0) === '#') return;
+    event.preventDefault();
+  }, true);
+  document.addEventListener('submit', function (event) {
+    event.preventDefault();
+  }, true);
+</script>`;
+
+    if (/<head[\s>]/i.test(code)) {
+      return code.replace(/<head([^>]*)>/i, `<head$1>${sandboxGuard}`);
+    }
+    return `${sandboxGuard}${code}`;
+  }, [code]);
+
   return (
-    <div className="h-screen bg-[#0A0A0A] text-gray-100 font-sans flex flex-col overflow-hidden selection:bg-[#4C7294]/30">
-      {/* 1. PREMIUM UTILITY HEADER */}
-      <header className="h-14 bg-[#0A0A0A] px-4 flex items-center justify-between border-b border-zinc-900/80 z-20">
-        <div className="flex items-center gap-3">
+    <div className="h-screen w-full transition-colors duration-500 bg-background text-foreground font-sans flex flex-col overflow-hidden selection:bg-primary/20 antialiased">
+      {/* 1. PREMIUM HEADER ACCENTS */}
+      <header className="h-14 min-h-[56px] bg-background/60 backdrop-blur-xl px-6 flex items-center justify-between border-b border-border/40 sticky top-0 z-50 transition-all duration-300">
+        {/* LEFT ACCENTS: BACK NAVIGATION & VIEW SWITCHERS */}
+        <div className="flex items-center gap-4">
           <motion.button
             onClick={() => navigate(-1)}
-            whileHover={{ x: -3, backgroundColor: "#141417" }}
+            whileHover={{ scale: 1.03, x: -1 }}
             whileTap={{ scale: 0.97 }}
-            className="text-gray-400 p-2 rounded-lg border border-zinc-900 bg-[#0C0C0C] transition-colors"
+            className="p-2 rounded-xl border border-border/60 bg-muted/30 text-muted-foreground transition-all hover:text-foreground hover:bg-muted/80 hover:border-primary/20"
           >
             <ArrowLeft className="w-4 h-4" />
           </motion.button>
 
-          <div className="h-4 w-[1px] bg-zinc-800" />
+          <div className="h-4 w-[1px] bg-border/60 hidden sm:block" />
 
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-mono text-zinc-400">
-                Workspace /
-              </span>
-              <span className="text-xs font-bold text-white tracking-wide">
-                Live Studio Editor
-              </span>
-            </div>
+          {/* Elegant View Segmented Controls */}
+          <div className="hidden lg:flex items-center gap-0.5 bg-muted/40 p-1 rounded-xl border border-border/40">
+            <button
+              onClick={() => setDesktopFocusView("code")}
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                desktopFocusView === "code"
+                  ? "bg-background text-foreground shadow-sm border border-border/60"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Code className="w-3.5 h-3.5" />
+              Source Code
+            </button>
+            <button
+              onClick={() => setDesktopFocusView("split")}
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                desktopFocusView === "split"
+                  ? "bg-background text-foreground shadow-sm border border-border/60"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Columns className="w-3.5 h-3.5" />
+              Split View
+            </button>
+            <button
+              onClick={() => setDesktopFocusView("preview")}
+              className={`flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all ${
+                desktopFocusView === "preview"
+                  ? "bg-primary/10 text-primary border border-primary/20 font-bold"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              <Eye className="w-3.5 h-3.5" />
+              Live Website
+            </button>
           </div>
+
+          <span className="text-xs font-semibold text-foreground tracking-wide max-w-[140px] sm:max-w-none truncate lg:hidden">
+            {currentWebsite?.title || "Luxury Live Editor"}
+          </span>
         </div>
 
-        {/* Global Action Tools */}
+        {/* RIGHT ACCENTS: TOOLBAR UTILITIES */}
         <div className="flex items-center gap-2.5">
+          {/* Micro Theme Switcher Panel */}
+          <div className="flex items-center gap-0.5 rounded-xl border border-border/50 bg-muted/20 p-1">
+            <button
+              type="button"
+              onClick={() => handleThemeChange("light")}
+              className={`p-1.5 rounded-lg transition-all ${
+                selectedTheme === "light"
+                  ? "bg-background text-primary shadow-sm border border-border/40"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+              title="Light theme"
+            >
+              <Sun className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => handleThemeChange("dark")}
+              className={`p-1.5 rounded-lg transition-all ${
+                selectedTheme === "dark"
+                  ? "bg-background text-primary shadow-sm border border-border/40"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+              title="Dark theme"
+            >
+              <Moon className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          {/* Run Code Action */}
           <button
             onClick={handleRunCode}
-            disabled={isCompiling}
-            className="flex items-center gap-1.5 text-xs bg-zinc-950 border border-zinc-800 hover:border-[#4C7294]/40 text-zinc-300 px-3 py-1.5 rounded-lg transition-all"
+            className="flex items-center gap-1.5 text-xs font-semibold bg-muted/40 border border-border/60 hover:border-primary/30 text-foreground px-3.5 py-2 rounded-xl transition-all shadow-sm hover:bg-muted/80"
           >
             <Play
-              className={`w-3 h-3 text-emerald-400 ${isCompiling ? "animate-pulse" : ""}`}
+              className={`w-3 h-3 text-emerald-500 fill-emerald-500/20 ${isCompiling ? "animate-pulse" : ""}`}
             />
-            Run Code
+            <span className="hidden xs:inline">Run Code</span>
           </button>
 
+          {/* Copy Action */}
           <button
             onClick={handleCopyCode}
-            className="flex items-center gap-1.5 text-xs bg-zinc-950 border border-zinc-800 hover:border-zinc-700 text-zinc-400 hover:text-white px-3 py-1.5 rounded-lg transition-all"
+            className="flex items-center gap-1.5 text-xs font-semibold bg-muted/40 border border-border/60 hover:border-zinc-400 text-foreground px-3.5 py-2 rounded-xl transition-all shadow-sm hover:bg-muted/80"
           >
             {copied ? (
-              <Check className="w-3 h-3 text-green-400" />
+              <Check className="w-3 h-3 text-green-500 stroke-[3]" />
             ) : (
-              <Copy className="w-3 h-3" />
+              <Copy className="w-3 h-3 text-muted-foreground" />
             )}
-            {copied ? "Copied" : "Copy"}
+            <span className="hidden xs:inline">
+              {copied ? "Copied" : "Copy"}
+            </span>
           </button>
 
+          {/* Export Build Button (Luxury Highlight) */}
           <button
             onClick={handleDownload}
-            className="flex items-center gap-1.5 text-xs bg-[#4C7294] hover:bg-[#426482] text-white px-3 py-1.5 rounded-lg font-medium transition-all shadow-[0_0_15px_rgba(76,114,148,0.1)]"
+            className="flex items-center gap-1.5 text-xs font-bold bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-2 rounded-xl transition-all shadow-[0_4px_20px_-4px_rgba(76,114,148,0.3)] dark:shadow-[0_4px_20px_-4px_rgba(0,0,0,0.5)] border border-primary/20 active:scale-[0.98]"
           >
-            <Download className="w-3 h-3" />
-            Export Build
+            <Download className="w-3 h-3 stroke-[2.5]" />
+            <span className="hidden sm:inline">Export Build</span>
+            <span className="sm:hidden inline">Export</span>
           </button>
         </div>
       </header>
 
-      {/* 2. SPLIT LAYOUT ENGINE WORKSPACE */}
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 overflow-hidden">
-        {/* LEFT COLUMN: INTERACTIVE RAILS & CODE EDITOR (6/12 Columns) */}
-        <div className="lg:col-span-6 flex bg-[#0C0C0C] border-r border-zinc-900/80 overflow-hidden">
-          {/* Vertical Icon Control Tab Rail */}
-          <div className="w-12 border-r border-zinc-900/60 bg-[#090909] flex flex-col items-center py-4 gap-4">
+      {/* LUXURIOUS MOBILE BOTTOM RAILS TABS SWAPPER */}
+      <div className="flex lg:hidden bg-background/60 backdrop-blur-xl border-b border-border/40 p-2 gap-2 z-20 shrink-0 transition-all duration-300">
+        {/* AI COPILOT TABS BUTTON */}
+        <button
+          onClick={() => setMobileActiveView("chat")}
+          className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-semibold rounded-xl transition-all duration-200 border ${
+            mobileActiveView === "chat"
+              ? "bg-background text-foreground shadow-sm border-border/80"
+              : "text-muted-foreground hover:text-foreground border-transparent"
+          }`}
+        >
+          <MessageSquare
+            className={`w-3.5 h-3.5 transition-colors ${
+              mobileActiveView === "chat"
+                ? "text-[#B94AF4] fill-[#B94AF4]/10"
+                : "text-muted-foreground"
+            }`}
+          />
+          AI Copilot
+        </button>
+
+        {/* SOURCE LAYOUT TABS BUTTON */}
+        <button
+          onClick={() => setMobileActiveView("editor")}
+          className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-semibold rounded-xl transition-all duration-200 border ${
+            mobileActiveView === "editor"
+              ? "bg-background text-foreground shadow-sm border-border/80"
+              : "text-muted-foreground hover:text-foreground border-transparent"
+          }`}
+        >
+          <Code
+            className={`w-3.5 h-3.5 ${
+              mobileActiveView === "editor"
+                ? "text-primary"
+                : "text-muted-foreground"
+            }`}
+          />
+          Source Layout
+        </button>
+
+        {/* CANVAS LIVE TABS BUTTON */}
+        <button
+          onClick={() => setMobileActiveView("preview")}
+          className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-xs font-bold rounded-xl transition-all duration-200 border ${
+            mobileActiveView === "preview"
+              ? "bg-primary/10 text-primary border-primary/20"
+              : "text-muted-foreground hover:text-foreground border-transparent"
+          }`}
+        >
+          <Eye
+            className={`w-3.5 h-3.5 ${
+              mobileActiveView === "preview"
+                ? "text-primary"
+                : "text-muted-foreground"
+            }`}
+          />
+          Canvas Live
+        </button>
+      </div>
+
+      {/* 2. THE MULTI-MODE STUDIO ENGINE */}
+      <div className="flex-1 flex w-full overflow-hidden relative">
+        {/* COLUMN 1: LEFT SIDEBAR PANEL (INCREASED WIDTH FRAME) */}
+        <div
+          className={`w-full lg:w-[380px] xl:w-[420px] shrink-0 bg-zinc-100/50 dark:bg-[#09090A] border-r border-zinc-200 dark:border-zinc-900 flex overflow-hidden h-full transition-colors duration-500 ${
+            mobileActiveView === "chat" ? "flex" : "hidden lg:flex"
+          }`}
+        >
+          {/* Internal Icons Strip Rail */}
+          <div className="w-12 border-r border-zinc-200/60 dark:border-zinc-900/60 bg-zinc-100 dark:bg-[#070708] flex flex-col items-center py-4 gap-4 shrink-0 transition-colors">
             {[
               { id: "ai", icon: Sparkles, label: "Lume AI Copilot" },
-              { id: "layers", icon: Layers, label: "DOM Architecture" },
-              { id: "terminal", icon: Terminal, label: "Compiler Logs" },
+              { id: "layers", icon: Layers, label: "DOM Tree Layout" },
+              { id: "terminal", icon: Terminal, label: "System Logs" },
             ].map((tab) => {
-              const IconComponent = tab.icon;
+              const IconComp = tab.icon;
               return (
                 <button
                   key={tab.id}
                   onClick={() => setActiveSidebarTab(tab.id)}
-                  className={`p-2 rounded-lg transition-all relative group`}
+                  className="p-2 rounded-lg transition-all relative group"
                   title={tab.label}
                 >
-                  <IconComponent
-                    className={`w-4 h-4 transition-colors ${
-                      activeSidebarTab === tab.id
-                        ? "text-[#4C7294]"
-                        : "text-zinc-600 hover:text-zinc-400"
-                    }`}
+                  <IconComp
+                    className={`w-4 h-4 ${activeSidebarTab === tab.id ? "text-[#4C7294]" : "text-zinc-400 dark:text-zinc-600 hover:text-zinc-600 dark:hover:text-zinc-400"}`}
                   />
                   {activeSidebarTab === tab.id && (
                     <motion.div
-                      layoutId="activeRailIndicator"
+                      layoutId="leftRailInd"
                       className="absolute left-0 w-[2px] h-4 bg-[#4C7294] top-1/2 -translate-y-1/2"
                     />
                   )}
@@ -213,220 +401,299 @@ const EditorPage = () => {
             })}
           </div>
 
-          {/* Dynamic Sidebar Control Panel Content */}
-          <div className="flex-1 flex flex-col h-full overflow-hidden">
-            {/* Top Code Editor Sub-Header */}
-            <div className="h-10 bg-[#0E0E10] border-b border-zinc-900/80 px-4 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Code className="w-3.5 h-3.5 text-[#4C7294]" />
-                <span className="text-xs font-mono tracking-wide text-zinc-400">
-                  source_matrix/index.html
-                </span>
-              </div>
-              <span className="text-[10px] font-mono text-zinc-600 uppercase">
-                HTML / Tailwind CSS
-              </span>
-            </div>
+          {/* Dynamic Content Window */}
+          <div className="flex-1 flex flex-col h-full overflow-hidden p-4">
+            <AnimatePresence mode="wait">
+              {activeSidebarTab === "ai" && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="h-full flex flex-col overflow-hidden"
+                >
+                  <div className="flex items-center justify-between border-b border-zinc-200 dark:border-zinc-900/60 pb-2 mb-3 shrink-0">
+                    <span className="text-xs font-semibold tracking-wide text-zinc-700 dark:text-zinc-300 flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-[#4C7294]" /> Lume
+                      AI Copilot
+                    </span>
+                    <span className="text-[10px] font-mono text-zinc-400 dark:text-zinc-600">
+                      Iterative Engine
+                    </span>
+                  </div>
 
-            {/* Core Code Micro-Editor Input Panel */}
-            <div className="flex-1 relative overflow-hidden bg-[#0A0A0B]">
-              <textarea
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
-                className="w-full h-full bg-transparent p-4 font-mono text-xs text-zinc-300 border-0 focus:outline-none focus:ring-0 resize-none overflow-y-auto leading-relaxed whitespace-pre"
-                spellCheck="false"
-              />
-            </div>
-
-            {/* Bottom Panel Drawer based on Left Rail Selection */}
-            <div className="h-44 bg-[#09090A] border-t border-zinc-900 p-4 flex flex-col justify-between">
-              <AnimatePresence mode="wait">
-                {activeSidebarTab === "ai" && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 5 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: 5 }}
-                    className="h-full flex flex-col justify-between"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5">
-                        <Sparkles className="w-3.5 h-3.5 text-[#4C7294]" />
-                        <span className="text-xs font-semibold text-zinc-400">
-                          Iterative Prompter
-                        </span>
+                  {/* Messages Bubble Frame */}
+                  <div className="flex-1 overflow-y-auto space-y-3 pr-1 custom-scrollbar text-xs">
+                    {conversations.length > 0 ? (
+                      <>
+                        {conversations.map((message, idx) => {
+                          const isUser = message.role === "user";
+                          return (
+                            <div
+                              key={message._id || idx}
+                              className={`flex gap-2 w-full ${isUser ? "justify-end" : "justify-start"}`}
+                            >
+                              {!isUser && (
+                                <div className="mt-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border border-[#4C7294]/20 bg-[#4C7294]/5 text-[#4C7294] dark:text-[#7DA6C8]">
+                                  <Sparkles className="h-2.5 w-2.5" />
+                                </div>
+                              )}
+                              <div
+                                className={`max-w-[85%] rounded-xl px-3 py-2 border shadow-sm ${
+                                  isUser
+                                    ? "rounded-tr-none border-[#4C7294]/20 bg-[#4C7294] text-white"
+                                    : "rounded-tl-none border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 text-zinc-700 dark:text-zinc-300"
+                                }`}
+                              >
+                                <p
+                                  className={`text-[10px] font-bold uppercase tracking-wider mb-0.5 ${isUser ? "text-zinc-200" : "text-zinc-400 dark:text-zinc-500"}`}
+                                >
+                                  {isUser ? "You" : "Lume AI"}
+                                </p>
+                                <p className="leading-relaxed break-words font-sans">
+                                  {message.content}
+                                </p>
+                              </div>
+                            </div>
+                          );
+                        })}
+                        <div ref={chatEndRef} />
+                      </>
+                    ) : (
+                      <div className="h-full flex items-center justify-center border border-dashed border-zinc-300 dark:border-zinc-800/80 rounded-xl p-4 text-center bg-zinc-50 dark:bg-zinc-950/20">
+                        <p className="text-[11px] text-zinc-400 dark:text-zinc-500">
+                          Ask Lume AI to adjust design nodes dynamically.
+                        </p>
                       </div>
-                      <span className="text-[10px] font-mono text-zinc-600">
-                        Refine layout with AI
-                      </span>
-                    </div>
+                    )}
+                  </div>
 
-                    <form
-                      onSubmit={handleIterativeGenerate}
-                      className="mt-2 relative"
+                  {/* Prompt Form */}
+                  <form
+                    onSubmit={handleIterativeGenerate}
+                    className="mt-3 relative rounded-xl border border-zinc-200 dark:border-zinc-800/80 bg-white dark:bg-[#0E0E10] p-1.5 focus-within:border-[#4C7294]/60 transition-colors shrink-0 shadow-sm"
+                  >
+                    <textarea
+                      value={prompt}
+                      onChange={(e) => setPrompt(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          handleIterativeGenerate(e);
+                        }
+                      }}
+                      placeholder="Ask AI to polish layout changes..."
+                      rows={2}
+                      className="block w-full resize-none bg-transparent pl-1 pr-10 text-xs leading-5 text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-600 focus:outline-none custom-scrollbar"
+                    />
+                    <button
+                      type="submit"
+                      disabled={isLoading || !prompt.trim()}
+                      className="absolute bottom-2 right-2 p-1.5 rounded-md bg-[#4C7294]/10 hover:bg-[#4C7294] text-[#4C7294] hover:text-white transition-all disabled:opacity-20"
                     >
-                      <input
-                        type="text"
-                        value={prompt}
-                        onChange={(e) => setPrompt(e.target.value)}
-                        placeholder="e.g., 'Make headers uppercase and swap theme to soft emerald accents'..."
-                        className="w-full bg-[#0E0E10] border border-zinc-900 rounded-lg pl-3 pr-10 py-2 text-xs text-gray-200 placeholder-zinc-600 focus:outline-none focus:border-[#4C7294]/60 transition-all"
-                      />
-                      <button
-                        type="submit"
-                        disabled={isLoading || !prompt.trim()}
-                        className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1.5 rounded-md bg-[#4C7294]/10 hover:bg-[#4C7294] text-[#4C7294] hover:text-white transition-all disabled:opacity-30 disabled:hover:bg-transparent"
-                      >
-                        {isLoading ? (
-                          <RefreshCw className="w-3 h-3 animate-spin" />
-                        ) : (
-                          <ChevronRight className="w-3 h-3" />
-                        )}
-                      </button>
-                    </form>
-                    <p className="text-[10px] text-zinc-600 mt-1">
-                      Lume updates the existing script fluidly on sub-prompts.
-                    </p>
-                  </motion.div>
-                )}
+                      {isLoading ? (
+                        <RefreshCw className="w-3 h-3 animate-spin" />
+                      ) : (
+                        <ChevronRight className="w-3 h-3" />
+                      )}
+                    </button>
+                  </form>
+                </motion.div>
+              )}
 
-                {activeSidebarTab === "layers" && (
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    className="text-xs text-zinc-500 font-mono space-y-1 overflow-y-auto h-full"
-                  >
-                    <div className="text-[11px] text-zinc-400 mb-1 font-sans font-semibold">
-                      Document Node Tree Preview
-                    </div>
-                    <div className="text-emerald-500/80">&lt;html&gt;</div>
-                    <div className="pl-3 text-blue-400/80">
-                      &lt;head&gt;{" "}
-                      <span className="text-zinc-600">
-                        // Tailwind script injected
-                      </span>
-                    </div>
-                    <div className="pl-3 text-emerald-500/80">
-                      &lt;body class="bg-black text-white"&gt;
-                    </div>
-                    <div className="pl-6 text-zinc-400">
-                      &lt;main id="root"&gt; ... &lt;/main&gt;
-                    </div>
-                  </motion.div>
-                )}
+              {activeSidebarTab === "layers" && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="text-[11px] font-mono space-y-1 overflow-y-auto h-full custom-scrollbar text-zinc-500 dark:text-zinc-500"
+                >
+                  <div className="text-zinc-700 dark:text-zinc-400 mb-2 font-sans font-medium text-xs">
+                    DOM Tree Blueprint
+                  </div>
+                  <div className="text-emerald-600 dark:text-emerald-500/80">
+                    &lt;html&gt;
+                  </div>
+                  <div className="pl-3 text-blue-600 dark:text-blue-400/80">
+                    &lt;head&gt;{" "}
+                    <span className="text-zinc-400 dark:text-zinc-700">
+                      // Tailwind Accents
+                    </span>
+                  </div>
+                  <div className="pl-3 text-emerald-600 dark:text-emerald-500/80">
+                    &lt;body class="bg-[#050505]"&gt;
+                  </div>
+                  <div className="pl-6 text-zinc-600 dark:text-zinc-400">
+                    &lt;main id="root"&gt; ... &lt;/main&gt;
+                  </div>
+                </motion.div>
+              )}
 
-                {activeSidebarTab === "terminal" && (
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    className="font-mono text-[11px] text-zinc-500 space-y-1 h-full overflow-y-auto"
-                  >
-                    <div className="flex items-center justify-between text-zinc-600 pb-1 border-b border-zinc-900 mb-1">
-                      <span>LUME CORE STANDARD LOGS</span>
-                      <span>STATUS: OK</span>
-                    </div>
-                    <div>
-                      [system] V8 isolation compilation context created.
-                    </div>
-                    <div>
-                      [compiler] Tailwind CSS structural classes parsed
-                      successfully.
-                    </div>
-                    <div className="text-zinc-400">
-                      [success] Native sandbox rendering is active.
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
+              {activeSidebarTab === "terminal" && (
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="font-mono text-[11px] text-zinc-500 dark:text-zinc-600 space-y-1 h-full overflow-y-auto custom-scrollbar"
+                >
+                  <div className="text-zinc-400 dark:text-zinc-500 border-b border-zinc-200 dark:border-zinc-900 pb-1 mb-1 text-[10px]">
+                    V8 ISOLATION CONTEXT STRUCT
+                  </div>
+                  <div>
+                    [bridge] Native runtime playground established successfully.
+                  </div>
+                  <div className="text-zinc-600 dark:text-zinc-400">
+                    [success] Virtual canvas engine sync complete.
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </div>
 
-        {/* RIGHT COLUMN: RE-ENGINEERED LUXURY LIVE CANVAS CANVAS (6/12 Columns) */}
-        <div className="lg:col-span-6 bg-[#090909] p-6 flex flex-col overflow-hidden">
-          {/* Top Control Rail for Device Previews */}
-          <div className="flex items-center justify-between pb-3 border-b border-zinc-900 mb-4">
+        {/* COLUMN 2: CENTER EDITOR PANEL (NO HORIZONTAL SCROLLBAR / WORD-WRAP CONFIG) */}
+        <div
+          className={`flex-1 flex flex-col bg-white dark:bg-[#0C0C0C] border-r border-zinc-200 dark:border-zinc-900 h-full overflow-hidden min-w-0 transition-colors duration-500 ${
+            mobileActiveView === "editor" ? "flex" : "hidden lg:flex"
+          } ${desktopFocusView === "preview" ? "lg:hidden" : "flex"}`}
+        >
+          {/* Editor Header */}
+          <div className="h-10 min-h-[40px] bg-zinc-50 dark:bg-[#0E0E10] border-b border-zinc-200 dark:border-zinc-900/80 px-4 flex items-center justify-between shrink-0 transition-colors">
+            <div className="flex items-center gap-2 truncate">
+              <Code className="w-3.5 h-3.5 text-[#4C7294]" />
+              <span className="text-xs font-mono tracking-wide text-zinc-500 dark:text-zinc-400 truncate">
+                source_matrix/index.html
+              </span>
+            </div>
+            <span className="text-[10px] font-mono text-zinc-400 dark:text-zinc-600 uppercase tracking-wider pr-2 hidden sm:inline">
+              HTML5 / Tailwind CDN
+            </span>
+          </div>
+
+          {/* Core Code Area - Wrapped to prevent horizontal scrolls */}
+          <div className="flex-1 relative overflow-hidden bg-zinc-50/30 dark:bg-[#0A0A0B]">
+            <Editor
+              height="100%"
+              language="html"
+              theme={isDark ? "vs-dark" : "light"}
+              value={code}
+              onChange={(value) => setCode(value || "")}
+              loading={
+                <div className="flex h-full items-center justify-center text-xs font-mono text-zinc-400 dark:text-zinc-600">
+                  Loading Monaco editor...
+                </div>
+              }
+              options={{
+                automaticLayout: true,
+                fontFamily:
+                  "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+                fontSize: 13,
+                lineHeight: 22,
+                minimap: { enabled: false },
+                padding: { top: 20, bottom: 20 },
+                scrollBeyondLastLine: false,
+                smoothScrolling: true,
+                wordWrap: "on",
+                wrappingIndent: "indent",
+              }}
+            />
+          </div>
+        </div>
+
+        {/* COLUMN 3: RIGHT SANDBOX PREVIEW */}
+        <div
+          className={`shrink-0 bg-zinc-50 dark:bg-[#090909] p-4 flex flex-col overflow-hidden h-full transition-colors duration-500 ${
+            mobileActiveView === "preview" ? "flex" : "hidden lg:flex"
+          } ${desktopFocusView === "code" ? "lg:hidden" : "flex"} ${
+            desktopFocusView === "split"
+              ? "lg:w-[420px] xl:w-[500px]"
+              : "lg:flex-1"
+          }`}
+        >
+          <div className="flex items-center justify-between pb-3 border-b border-zinc-200 dark:border-zinc-900 mb-4 shrink-0">
             <div className="flex items-center gap-2">
-              <Eye className="w-3.5 h-3.5 text-zinc-500" />
-              <span className="text-xs font-semibold text-zinc-400 tracking-wide">
-                Live Compiled Canvas
+              <Eye className="w-3.5 h-3.5 text-zinc-400 dark:text-zinc-500" />
+              <span className="text-xs font-semibold text-zinc-500 dark:text-zinc-400 tracking-wide">
+                Live Sandbox Viewport
               </span>
             </div>
 
-            {/* Micro Responsive Device Controller Toggles */}
-            <div className="flex items-center gap-1 bg-zinc-950 rounded-lg p-0.5 border border-zinc-900">
-              {[
-                { id: "desktop", icon: Monitor, label: "Viewport Desktop" },
-                { id: "tablet", icon: Tablet, label: "Viewport Tablet" },
-                { id: "mobile", icon: Smartphone, label: "Viewport Mobile" },
-              ].map((device) => {
-                const DeviceIcon = device.icon;
-                return (
-                  <button
-                    key={device.id}
-                    onClick={() => setPreviewMode(device.id)}
-                    className={`p-1.5 rounded-md transition-all ${
-                      previewMode === device.id
-                        ? "bg-[#4C7294]/15 text-[#4C7294] border border-[#4C7294]/30"
-                        : "text-zinc-600 hover:text-zinc-400"
-                    }`}
-                    title={device.label}
-                  >
-                    <DeviceIcon className="w-3.5 h-3.5" />
-                  </button>
-                );
-              })}
+            {/* Responsive Toggles */}
+            <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-0.5 bg-zinc-100 dark:bg-zinc-950 rounded-lg p-0.5 border border-zinc-200 dark:border-zinc-900">
+                {[
+                  { id: "desktop", icon: Monitor, label: "Desktop Grid" },
+                  { id: "tablet", icon: Tablet, label: "Tablet Mode" },
+                  { id: "mobile", icon: Smartphone, label: "Mobile Scope" },
+                ].map((device) => {
+                  const DevIcon = device.icon;
+                  return (
+                    <button
+                      key={device.id}
+                      onClick={() => setPreviewMode(device.id)}
+                      className={`p-1.5 rounded-md transition-all ${
+                        previewMode === device.id
+                          ? "bg-[#4C7294]/15 text-[#4C7294] border border-[#4C7294]/20"
+                          : "text-zinc-400 dark:text-zinc-600 hover:text-zinc-600 dark:hover:text-zinc-400"
+                      }`}
+                      title={device.label}
+                    >
+                      <DevIcon className="w-3.5 h-3.5" />
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
 
-          {/* Core Interactive Sandbox Canvas Screen */}
-          <div className="flex-1 flex items-center justify-center overflow-hidden bg-zinc-950/20 rounded-xl border border-zinc-900/60 p-2 relative group">
-            {/* Compiling/Updating Overlay State Layer */}
+          {/* Sandbox Wrapper Frame */}
+          <div className="flex-1 flex items-center justify-center overflow-hidden bg-zinc-200/50 dark:bg-zinc-950/40 rounded-xl border border-zinc-200 dark:border-zinc-900/60 p-1 relative">
             <AnimatePresence>
               {(isCompiling || isLoading) && (
                 <motion.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  className="absolute inset-0 bg-[#0A0A0A]/80 backdrop-blur-[2px] z-10 flex flex-col items-center justify-center gap-3"
+                  className="absolute inset-0 bg-white/95 dark:bg-[#0A0A0A]/95 backdrop-blur-[1px] z-10 flex flex-col items-center justify-center gap-2.5"
                 >
-                  <RefreshCw className="w-5 h-5 text-[#4C7294] animate-spin" />
-                  <span className="text-xs font-mono text-zinc-400 tracking-wider">
-                    Syncing Sandbox Ecosystem...
+                  <RefreshCw className="w-4 h-4 text-[#4C7294] animate-spin" />
+                  <span className="text-[11px] font-mono text-zinc-400 dark:text-zinc-500 tracking-wider">
+                    Syncing Document Sandbox Nodes...
                   </span>
                 </motion.div>
               )}
             </AnimatePresence>
 
-            {/* Actual Sandbox Responsive Render Box */}
             <motion.div
-              animate={{ width: previewWidths[previewMode] }}
-              transition={{ type: "spring", stiffness: 300, damping: 30 }}
-              className="h-full bg-white rounded-lg shadow-[0_25px_60px_-15px_rgba(0,0,0,0.7)] overflow-hidden border border-zinc-900/40 relative"
+              animate={{
+                width:
+                  window.innerWidth < 1024
+                    ? "100%"
+                    : previewWidths[previewMode],
+                maxWidth: "100%",
+              }}
+              transition={{ type: "spring", stiffness: 340, damping: 26 }}
+              className="h-full bg-white rounded-lg shadow-xl overflow-hidden border border-zinc-200 dark:border-zinc-900/40 relative w-full"
             >
-              {/* Optional UI frame design dots if not desktop */}
               {previewMode !== "desktop" && (
-                <div className="h-6 bg-zinc-100 border-b border-zinc-200 px-3 flex items-center gap-1">
+                <div className="h-10 border-b border-border bg-muted/40 px-4 flex items-center justify-between">
                   <div className="w-1.5 h-1.5 rounded-full bg-zinc-300" />
                   <div className="w-1.5 h-1.5 rounded-full bg-zinc-300" />
                 </div>
               )}
-
               <iframe
-                srcDoc={code}
-                title="Lume Sandbox Playground"
+                srcDoc={previewCode}
+                title="Lume Production Sandbox Engine"
                 sandbox="allow-scripts allow-same-origin"
                 className="w-full h-full bg-white border-0"
               />
             </motion.div>
           </div>
 
-          {/* Minimal Engine Health Footer */}
-          <div className="flex items-center justify-between text-[10px] font-mono text-zinc-700 pt-3 border-t border-zinc-900/60 mt-4">
+          {/* Footer Engine Status */}
+          <div className="flex items-center justify-between text-[10px] font-mono text-zinc-400 dark:text-zinc-600 pt-3 border-t border-zinc-200 dark:border-zinc-900/60 mt-4 shrink-0">
             <span className="flex items-center gap-1">
-              <span className="w-1 h-1 rounded-full bg-emerald-500" />
-              SANDBOX CORE: ALIVE
+              <span className="w-1 h-1 rounded-full bg-emerald-500" /> COMPILER:
+              STATUS_OK
             </span>
-            <span>Target Framework: Vanilla HTML5 / Tailwind CDN</span>
+            <span className="hidden xs:inline">Sandboxed Execution Node</span>
           </div>
         </div>
       </div>

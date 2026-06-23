@@ -7,11 +7,13 @@ import store from "./store/store";
 
 import { Toaster } from "./components/ui/sonner";
 import { AppRouter } from "./routes/AppRouter";
+import ThemeStoreSync from "./components/home/ThemeStoreSync";
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>
     <Provider store={store}>
       <ThemeProvider attribute="class" defaultTheme="dark">
+        <ThemeStoreSync />
         <AppRouter />
         <Toaster />
       </ThemeProvider>
