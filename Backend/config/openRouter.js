@@ -2,16 +2,279 @@
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const FETCH_TIMEOUT_MS = 120_000;
 
-// Prioritized list of free models — if one is rate-limited, fall back to the next
-// Verified against OpenRouter API: only models ending with ":free" are actually free
-const FALLBACK_MODELS = [
-  "google/gemma-4-31b-it:free",
-  "google/gemma-4-26b-a4b-it:free",
-  "nvidia/nemotron-3-super-120b-a12b:free",
-  "nousresearch/hermes-3-llama-3.1-405b:free",
-  "meta-llama/llama-3.3-70b-instruct:free",
-  "qwen/qwen3-coder:free",
-];
+function getOpenRouterApiKey() {
+  return (
+    process.env.OPEN_ROUTER_API_KEY || process.env.OPENROUTER_API_KEY || null
+  );
+}
+
+function normalizeFatalOpenRouterMessage(message) {
+  if (/user not found/i.test(message)) {
+    return (
+      "OpenRouter rejected the configured API key with 'User not found'. " +
+      "Check that your backend .env contains a valid OpenRouter key under " +
+      "OPEN_ROUTER_API_KEY or OPENROUTER_API_KEY."
+    );
+  }
+
+  return message;
+}
+
+// Use one model consistently so generation behavior is predictable.
+const ACTIVE_MODEL = "nvidia/nemotron-3-super-120b-a12b:free";
+
+function extractJsonObject(text) {
+  if (typeof text !== "string") {
+    throw new Error("AI response is not text");
+  }
+
+  const cleaned = text
+    .replace(/```json/gi, "")
+    .replace(/```/g, "")
+    .trim();
+
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    const start = cleaned.indexOf("{");
+    const end = cleaned.lastIndexOf("}");
+
+    if (start === -1 || end === -1 || end <= start) {
+      throw new Error("AI response does not contain a JSON object");
+    }
+
+    return JSON.parse(cleaned.slice(start, end + 1));
+  }
+}
+
+function extractHtmlDocument(text) {
+  if (typeof text !== "string") {
+    throw new Error("AI response is not text");
+  }
+
+  const cleaned = cleanGeneratedHtml(text)
+    .replace(/```html/gi, "")
+    .replace(/```/g, "")
+    .trim();
+  const start = cleaned.search(/<!doctype html>|<html[\s>]/i);
+  const end = cleaned.lastIndexOf("</html>");
+
+  if (start === -1 || end === -1 || end <= start) {
+    throw new Error("AI response does not contain a full HTML document");
+  }
+
+  return cleaned.slice(start, end + "</html>".length).trim();
+}
+
+function decodeJsonEscapes(value) {
+  return value
+    .replace(/\\r\\n/g, "\n")
+    .replace(/\\n/g, "\n")
+    .replace(/\\t/g, "\t")
+    .replace(/\\"/g, '"')
+    .replace(/\\'/g, "'")
+    .replace(/\\\//g, "/");
+}
+
+export function cleanGeneratedHtml(code) {
+  if (typeof code !== "string") {
+    throw new Error("AI code response is not text");
+  }
+
+  let cleaned = code
+    .replace(/^```html\s*/i, "")
+    .replace(/^```\s*/i, "")
+    .replace(/```$/i, "")
+    .trim();
+
+  cleaned = decodeJsonEscapes(cleaned);
+
+  const htmlStart = cleaned.search(/<!doctype html>|<html[\s>]/i);
+  if (htmlStart !== -1) {
+    cleaned = cleaned.slice(htmlStart).trim();
+  }
+
+  const htmlEnd = cleaned.toLowerCase().lastIndexOf("</html>");
+  if (htmlEnd !== -1) {
+    cleaned = cleaned.slice(0, htmlEnd + "</html>".length).trim();
+  }
+
+  cleaned = cleaned
+    .replace(/^['"]+/, "")
+    .replace(/['"]+$/, "")
+    .replace(/^[{}\],\s]+/, "")
+    .replace(/[{}\],\s]+$/, "")
+    .trim();
+
+  return cleaned;
+}
+
+export function parseAIWebsiteResponse(text) {
+  let parsed;
+
+  try {
+    parsed = extractJsonObject(text);
+  } catch (jsonError) {
+    const code = extractHtmlDocument(text);
+
+    return {
+      message: "Website generated successfully",
+      code: cleanGeneratedHtml(code),
+    };
+  }
+
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("AI JSON response must be an object");
+  }
+
+  if (typeof parsed.message !== "string" || !parsed.message.trim()) {
+    throw new Error("AI JSON response is missing a message string");
+  }
+
+  if (typeof parsed.code !== "string" || !parsed.code.trim()) {
+    throw new Error("AI JSON response is missing a code string");
+  }
+
+  return {
+    message: parsed.message.trim(),
+    code: cleanGeneratedHtml(parsed.code),
+  };
+}
+
+function buildMockWebsiteResponse(reason = "OpenRouter is unavailable") {
+  return JSON.stringify({
+    message: `Mock website generated because ${reason}.`,
+    code: `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Lume Offline Preview</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b1020;
+      --card: rgba(20, 28, 48, 0.88);
+      --accent: #4c7294;
+      --accent-2: #6fb1d6;
+      --text: #f5f7fb;
+      --muted: #b6c2d1;
+      --border: rgba(255, 255, 255, 0.1);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, sans-serif;
+      min-height: 100vh;
+      background: radial-gradient(circle at top, #182746 0%, var(--bg) 55%);
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .card {
+      width: min(720px, 100%);
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      padding: 32px;
+      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
+    }
+    .badge {
+      display: inline-block;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: rgba(111, 177, 214, 0.14);
+      color: var(--accent-2);
+      font-size: 14px;
+      margin-bottom: 16px;
+    }
+    h1 {
+      margin: 0 0 12px;
+      font-size: clamp(2rem, 4vw, 3.25rem);
+      line-height: 1.1;
+    }
+    p {
+      color: var(--muted);
+      line-height: 1.7;
+      font-size: 1rem;
+    }
+    .actions {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-top: 24px;
+    }
+    button, a {
+      border: 0;
+      border-radius: 12px;
+      padding: 14px 18px;
+      font: inherit;
+      text-decoration: none;
+      cursor: pointer;
+      transition: transform 0.2s ease, opacity 0.2s ease;
+    }
+    button {
+      background: var(--accent);
+      color: white;
+    }
+    a {
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    button:hover, a:hover { transform: translateY(-1px); opacity: 0.95; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 28px;
+    }
+    .panel {
+      padding: 16px;
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid var(--border);
+    }
+    .panel strong { display: block; margin-bottom: 8px; }
+    @media (max-width: 768px) {
+      .card { padding: 24px; }
+      .grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <span class="badge">Offline fallback active</span>
+    <h1>Lume is connected, but OpenRouter is unreachable.</h1>
+    <p>
+      Your backend and database are working. This preview is returned so you can
+      keep testing the editor flow while the AI provider is unavailable.
+    </p>
+    <div class="actions">
+      <button onclick="alert('Frontend, backend, and JavaScript are all working.')">Test interaction</button>
+      <a href="https://openrouter.ai/" target="_blank" rel="noreferrer">OpenRouter status</a>
+    </div>
+    <section class="grid">
+      <article class="panel">
+        <strong>Backend</strong>
+        <span>API routes are responding normally.</span>
+      </article>
+      <article class="panel">
+        <strong>Database</strong>
+        <span>Website records can still be stored and updated.</span>
+      </article>
+      <article class="panel">
+        <strong>AI Provider</strong>
+        <span>${reason.replace(/</g, "&lt;")}</span>
+      </article>
+    </section>
+  </main>
+</body>
+</html>`,
+  });
+}
 
 async function fetchWithTimeout(url, options, timeoutMs) {
   const controller = new AbortController();
@@ -49,6 +312,11 @@ async function tryModel(model, apiKey, clientPrompt) {
         model,
         messages: [
           {
+            role: "system",
+            content:
+              'Return only valid JSON with exactly two string fields: "message" and "code". The code value must contain one complete HTML document. Do not include markdown, prose, reasoning, or text outside the JSON object.',
+          },
+          {
             role: "user",
             content: `You are a web development assistant. Your task is to generate HTML, CSS, and JavaScript code for the user's request. The code should be clean, modern, and responsive. Do not include any explanations or comments in the code. strictly follow the rules and style provided by the user.\n\n${clientPrompt}`,
           },
@@ -73,6 +341,19 @@ async function tryModel(model, apiKey, clientPrompt) {
     const errorMsg =
       data.error?.message || `OpenRouter returned status ${response.status}`;
     console.log(`  ✗ ${model} failed: ${errorMsg}`);
+
+    // Account/auth errors will not be fixed by trying more models.
+    if (
+      response.status === 401 ||
+      response.status === 403 ||
+      /user not found|invalid api key|unauthorized|forbidden/i.test(errorMsg)
+    ) {
+      return {
+        status: "fatal",
+        message: normalizeFatalOpenRouterMessage(errorMsg),
+      };
+    }
+
     return { status: "error", message: errorMsg };
   }
 
@@ -87,95 +368,79 @@ async function tryModel(model, apiKey, clientPrompt) {
   }
 
   console.log(`  ✓ ${model} responded successfully`);
-  return { status: "success", content: aiText };
+  let parsed;
+  try {
+    parsed = parseAIWebsiteResponse(aiText);
+  } catch (error) {
+    console.warn(`  ✗ ${model} returned invalid JSON: ${error.message}`);
+    return { status: "error", message: `Invalid JSON from ${model}` };
+  }
+
+  return { status: "success", content: JSON.stringify(parsed) };
 }
 
 async function generateAIResponse(clientPrompt) {
-  const apiKey = process.env.OPEN_ROUTER_API_KEY;
+  const apiKey = getOpenRouterApiKey();
   if (!apiKey) {
     console.warn(
-      "OPEN_ROUTER_API_KEY is not set in .env! Returning a mock response to test the frontend and backend connection.",
+      "No OpenRouter API key found in .env (expected OPEN_ROUTER_API_KEY or OPENROUTER_API_KEY). Returning a mock response to test the frontend and backend connection.",
     );
 
-    return JSON.stringify({
-      message:
-        "This is a mock generated website because the OpenRouter API key is missing. The frontend and backend connection is working perfectly!",
-      code: `
-        <!DOCTYPE html>
-        <html lang="en">
-        <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Mock Lume Website</title>
-          <style>
-            body { font-family: system-ui, sans-serif; background: #111; color: white; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; text-align: center; }
-            .card { background: #222; padding: 2rem; border-radius: 12px; border: 1px solid #333; box-shadow: 0 4px 20px rgba(0,0,0,0.5); }
-            h1 { color: #4C7294; margin-top: 0; }
-            button { background: #4C7294; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; font-weight: bold; margin-top: 1rem; }
-            button:hover { background: #3b5c7a; }
-          </style>
-        </head>
-        <body>
-          <div class="card">
-            <h1>Backend Connected! 🚀</h1>
-            <p>Your frontend successfully called the backend!</p>
-            <p>To see the real AI generation, please add your <b>OPEN_ROUTER_API_KEY</b> to the backend <code>.env</code> file.</p>
-            <button onclick="alert('JavaScript works too!')">Click Me</button>
-          </div>
-        </body>
-        </html>
-      `,
-    });
+    return buildMockWebsiteResponse("the OpenRouter API key is missing");
   }
 
-  console.log(
-    `\nStarting AI generation with ${FALLBACK_MODELS.length} fallback models...`,
-  );
+  console.log(`\nStarting AI generation with one model: ${ACTIVE_MODEL}`);
 
-  for (let i = 0; i < FALLBACK_MODELS.length; i++) {
-    const model = FALLBACK_MODELS[i];
-    console.log(`\nModel ${i + 1}/${FALLBACK_MODELS.length}: ${model}`);
+  try {
+    const result = await tryModel(ACTIVE_MODEL, apiKey, clientPrompt);
 
-    try {
-      const result = await tryModel(model, apiKey, clientPrompt);
-
-      if (result.status === "success") {
-        return result.content;
-      }
-
-      if (result.status === "rate_limited") {
-        // Add a small delay before trying the next model
-        if (i < FALLBACK_MODELS.length - 1) {
-          const delay = 2_000 * (i + 1);
-          console.log(`  Switching to next model in ${delay / 1000}s...`);
-          await sleep(delay);
-        }
-        continue;
-      }
-
-      // Other errors — also try next model
-      if (i < FALLBACK_MODELS.length - 1) {
-        console.log(`  Falling back to next model...`);
-        await sleep(2000);
-      }
-    } catch (error) {
-      if (error.name === "AbortError") {
-        console.error(
-          `  ✗ ${model} timed out after ${FETCH_TIMEOUT_MS / 1000}s`,
-        );
-      } else {
-        console.error(`  ✗ ${model} threw: ${error.message}`);
-      }
-
-      if (i < FALLBACK_MODELS.length - 1) {
-        console.log(`  Falling back to next model...`);
-        await sleep(2000);
-      }
+    if (result.status === "success") {
+      return result.content;
     }
-  }
 
-  console.error(`All ${FALLBACK_MODELS.length} models failed.`);
-  return null;
+    if (result.status === "fatal") {
+      throw new Error(result.message);
+    }
+
+    if (result.status === "rate_limited") {
+      throw new Error(
+        `${ACTIVE_MODEL} is rate-limited. Please try again later.`,
+      );
+    }
+
+    throw new Error(result.message || `${ACTIVE_MODEL} failed.`);
+  } catch (error) {
+    if (
+      /user not found|invalid api key|unauthorized|forbidden/i.test(
+        error.message || "",
+      )
+    ) {
+      throw error;
+    }
+
+    if (error.name === "AbortError") {
+      console.error(
+        `  ✗ ${ACTIVE_MODEL} timed out after ${FETCH_TIMEOUT_MS / 1000}s`,
+      );
+    } else {
+      console.error(`  ✗ ${ACTIVE_MODEL} failed: ${error.message}`);
+    }
+
+    if (
+      /fetch failed|network|econnrefused|enotfound|socket/i.test(
+        error.message || "",
+      )
+    ) {
+      console.warn(
+        "OpenRouter network request failed. Returning a mock website response so local testing can continue.",
+      );
+      return buildMockWebsiteResponse(
+        error.message || "network connectivity issues",
+      );
+    }
+
+    throw error;
+  }
 }
 
 export default generateAIResponse;

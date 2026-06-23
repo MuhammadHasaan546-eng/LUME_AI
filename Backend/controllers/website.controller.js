@@ -1,4 +1,6 @@
-import generateAIResponse from "../config/openRouter.js";
+import generateAIResponse, {
+  parseAIWebsiteResponse,
+} from "../config/openRouter.js";
 import ExpressError from "../utils/ExpressError.js";
 import ApiResponse from "../utils/ApiResponse.js";
 import wrapAsync from "../utils/wrapAsync.js";
@@ -7,6 +9,16 @@ import User from "../models/User.models.js";
 
 const GENERATE_COST = 50;
 const UPDATE_COST = 25;
+
+function mapAIServiceError(error) {
+  const message = error?.message || "AI generation failed. Please try again.";
+
+  if (/user not found|invalid api key|unauthorized|forbidden/i.test(message)) {
+    return new ExpressError(`OpenRouter error: ${message}`, 502);
+  }
+
+  return new ExpressError(message, 502);
+}
 
 // export const generateDemo = async (req, res) => {
 //   try {
@@ -189,18 +201,19 @@ export const generateWebSite = wrapAsync(async (req, res) => {
 
   const finalPrompt = masterPrompt.replace("{USER_PROMPT}", prompt);
 
-  const aiResponse = await generateAIResponse(finalPrompt);
-  if (!aiResponse) {
-    throw new ExpressError("AI response not found", 404);
-  }
-  let parsedResponse = aiResponse;
+  let aiResponse;
   try {
-    // Some models wrap JSON in markdown blocks, so clean it up before parsing
-    const cleanJsonString = aiResponse
-      .replace(/```json/gi, "")
-      .replace(/```/g, "")
-      .trim();
-    parsedResponse = JSON.parse(cleanJsonString);
+    aiResponse = await generateAIResponse(finalPrompt);
+  } catch (error) {
+    throw mapAIServiceError(error);
+  }
+
+  if (!aiResponse) {
+    throw new ExpressError("AI generation failed. Please try again.", 502);
+  }
+
+  try {
+    const parsedResponse = parseAIWebsiteResponse(aiResponse);
     console.log(parsedResponse);
 
     const slug =
@@ -212,7 +225,7 @@ export const generateWebSite = wrapAsync(async (req, res) => {
       "-" +
       Date.now().toString(36);
 
-    await Website.create({
+    const website = await Website.create({
       user: req.user.id,
       title: parsedResponse.message,
       slug,
@@ -231,23 +244,27 @@ export const generateWebSite = wrapAsync(async (req, res) => {
 
     user.credits -= GENERATE_COST;
     await user.save();
+
+    return res.status(200).json(
+      new ApiResponse(
+        200,
+        {
+          websiteId: website._id,
+          latestCode: website.latestCode,
+          title: website.title,
+          createdAt: website.createdAt,
+          credits: user.credits,
+        },
+        "Website generated successfully",
+      ),
+    );
   } catch (e) {
     console.warn("Failed to parse AI response as JSON", e);
+    throw new ExpressError(
+      "Invalid AI response format. Please try again.",
+      502,
+    );
   }
-
-  return res.status(200).json(
-    new ApiResponse(
-      200,
-      {
-        websiteId: Website._id,
-        latestCode: Website.latestCode,
-        title: Website.title,
-        createdAt: Website.createdAt,
-        credits: user.credits,
-      },
-      "Website generated successfully",
-    ),
-  );
 });
 
 export const updateWebsite = wrapAsync(async (req, res) => {
@@ -276,18 +293,20 @@ export const updateWebsite = wrapAsync(async (req, res) => {
 
   const finalPrompt = masterPrompt.replace("{USER_PROMPT}", prompt);
 
-  const aiResponse = await generateAIResponse(finalPrompt);
+  let aiResponse;
+  try {
+    aiResponse = await generateAIResponse(finalPrompt);
+  } catch (error) {
+    throw mapAIServiceError(error);
+  }
+
   if (!aiResponse) {
-    throw new ExpressError("AI response not found", 404);
+    throw new ExpressError("AI generation failed. Please try again.", 502);
   }
 
   let parsedResponse = aiResponse;
   try {
-    const cleanJsonString = aiResponse
-      .replace(/```json/gi, "")
-      .replace(/```/g, "")
-      .trim();
-    parsedResponse = JSON.parse(cleanJsonString);
+    parsedResponse = parseAIWebsiteResponse(aiResponse);
 
     website.title = parsedResponse.message;
     website.latestCode = parsedResponse.code;
@@ -303,7 +322,19 @@ export const updateWebsite = wrapAsync(async (req, res) => {
     console.warn("Failed to parse AI response as JSON", e);
   }
 
-  return res.status(200).json(new ApiResponse(200, parsedResponse));
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        websiteId: website._id,
+        title: website.title,
+        latestCode: website.latestCode,
+        updatedAt: website.updatedAt,
+        credits: user.credits,
+      },
+      "Website updated successfully",
+    ),
+  );
 });
 
 export const getUserWebsites = wrapAsync(async (req, res) => {

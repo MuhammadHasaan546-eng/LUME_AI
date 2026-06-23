@@ -7,10 +7,18 @@ import store from "@/store/store";
 import { CheckAuth } from "@/components/Auth/CheckAuth";
 import Dashboard from "@/pages/client/Dashboard";
 import GeneratePage from "@/pages/client/Generate";
+import EditorPage from "@/pages/client/Editer";
 
 // 1. Loading component
 const PageLoader = () => (
-  <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+  <div
+    style={{
+      display: "flex",
+      justifyContent: "center",
+      alignItems: "center",
+      height: "100vh",
+    }}
+  >
     <h3>Loading App...</h3>
   </div>
 );
@@ -52,12 +60,11 @@ export const AppRouter = () => {
       path: "generate",
       element: <GeneratePage />,
     },
+    {
+      path: "editor/:codeId",
+      element: <EditorPage />,
+    },
   ]);
 
-  return (
-    <RouterProvider
-      router={router}
-      fallbackElement={<PageLoader />}
-    />
-  );
+  return <RouterProvider router={router} fallbackElement={<PageLoader />} />;
 };

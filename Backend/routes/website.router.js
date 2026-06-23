@@ -1,5 +1,6 @@
 import express from "express";
 import IsAuth from "../middleware/isAuth.js";
+import validate from "../middleware/validate.js";
 import {
   generateWebSite,
   updateWebsite,
@@ -16,34 +17,17 @@ const router = express.Router();
 
 // ── Website generation & management ──
 router.post(
-  "/gen",
+  "/generate-website",
   IsAuth,
-  (req, res, next) => {
-    const { error } = generateWebsiteValidation.validate(req.body, {
-      abortEarly: false,
-    });
-    if (error) {
-      const messages = error.details.map((d) => d.message).join(", ");
-      return res.status(400).json({ message: messages });
-    }
-    next();
-  },
+  validate(generateWebsiteValidation),
   generateWebSite,
 );
+router.get("/websites", IsAuth, getUserWebsites);
 
 router.put(
-  "/website",
+  "/website-update",
   IsAuth,
-  (req, res, next) => {
-    const { error } = updateWebsiteValidation.validate(req.body, {
-      abortEarly: false,
-    });
-    if (error) {
-      const messages = error.details.map((d) => d.message).join(", ");
-      return res.status(400).json({ message: messages });
-    }
-    next();
-  },
+  validate(updateWebsiteValidation),
   updateWebsite,
 );
 

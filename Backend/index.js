@@ -3,6 +3,7 @@ import "dotenv/config";
 import main from "./config/db.js";
 import AuthRouter from "./routes/auth.router.js";
 import UserRouter from "./routes/user.router.js";
+import WebsiteRouter from "./routes/website.router.js";
 import cookieParser from "cookie-parser";
 import cors from "cors";
 
@@ -23,6 +24,7 @@ app.use(
 // Routes
 app.use("/api/auth", AuthRouter);
 app.use("/api/user", UserRouter);
+app.use("/api/website", WebsiteRouter);
 
 app.use((err, req, res, next) => {
   const { message = "Something went wrong ", statusCode = 500 } = err;
