@@ -27,7 +27,7 @@ import { useDispatch, useSelector } from "react-redux";
 import { useTheme } from "next-themes";
 import { toast } from "sonner";
 import Editor from "@monaco-editor/react";
-import { getWebsiteById, updateWebsite } from "@/api/website";
+import { deployWebsite, getWebsiteById, updateWebsite } from "@/api/website";
 import { setThemePreference } from "@/store/theme";
 
 const EditorPage = () => {
@@ -133,6 +133,21 @@ const EditorPage = () => {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+  };
+
+  const handleDeploy = async () => {
+    if (!codeId) return;
+
+    try {
+      const response = await dispatch(
+        deployWebsite({ websiteId: codeId, code }),
+      ).unwrap();
+      const liveUrl = response.data?.deployedUrl || `/live-site/${codeId}`;
+      toast.success(response.message || "Website deployed successfully.");
+      navigate(liveUrl.replace(window.location.origin, ""));
+    } catch (err) {
+      toast.error(err || "Deploy failed. Please try again.");
+    }
   };
 
   const previewWidths = {
@@ -295,12 +310,15 @@ const EditorPage = () => {
 
           {/* NEW: Premium Deploy Action (Gradient Text & Italic) */}
           <button
-            // onClick={handleDeploy || (() => {})}
-            className="flex items-center gap-1.5 text-xs font-bold bg-muted/30 border border-purple-500/30 hover:border-pink-500/60 px-3.5 py-2 rounded-xl transition-all shadow-sm hover:bg-muted/60 hover:shadow-[0_0_15px_-3px_rgba(236,72,153,0.2)] active:scale-[0.98]"
+            onClick={handleDeploy}
+            disabled={isLoading}
+            className="flex items-center gap-1.5 text-xs font-bold bg-muted/30 border border-purple-500/30 hover:border-pink-500/60 px-3.5 py-2 rounded-xl transition-all shadow-sm hover:bg-muted/60 hover:shadow-[0_0_15px_-3px_rgba(236,72,153,0.2)] active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
           >
-            <Rocket className="w-3.5 h-3.5 text-purple-400 stroke-[2.5]" />
+            <Rocket
+              className={`w-3.5 h-3.5 text-purple-400 stroke-[2.5] ${isLoading ? "animate-pulse" : ""}`}
+            />
             <span className="bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 bg-clip-text text-transparent italic tracking-wide">
-              Deploy
+              {isLoading ? "Deploying" : "Deploy"}
             </span>
           </button>
 

@@ -8,6 +8,7 @@ import { CheckAuth } from "@/components/Auth/CheckAuth";
 import Dashboard from "@/pages/client/Dashboard";
 import GeneratePage from "@/pages/client/Generate";
 import EditorPage from "@/pages/client/Editer";
+import LiveSite from "@/pages/public/LiveSite";
 
 // 1. Loading component
 const PageLoader = () => (
@@ -63,6 +64,10 @@ export const AppRouter = () => {
     {
       path: "editor/:codeId",
       element: <EditorPage />,
+    },
+    {
+      path: "live-site/:websiteId",
+      element: <LiveSite />,
     },
   ]);
 

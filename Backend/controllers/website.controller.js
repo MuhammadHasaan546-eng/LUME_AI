@@ -441,7 +441,7 @@ export const updateWebsite = wrapAsync(async (req, res) => {
 });
 export const getUserWebsites = wrapAsync(async (req, res) => {
   const websites = await Website.find({ user: req.user.id })
-    .select("title slug deployed deployedUrl createdAt updatedAt")
+    .select("title slug latestCode deployed deployedUrl createdAt updatedAt")
     .sort({ createdAt: -1 });
 
   return res.status(200).json(new ApiResponse(200, websites));
@@ -457,6 +457,23 @@ export const getWebsiteById = wrapAsync(async (req, res) => {
 
   if (website.user.toString() !== req.user.id.toString()) {
     throw new ExpressError("Unauthorized", 403);
+  }
+
+  return res.status(200).json(new ApiResponse(200, website));
+});
+
+export const getLiveWebsite = wrapAsync(async (req, res) => {
+  const { websiteId } = req.params;
+
+  const website = await Website.findById(websiteId).select(
+    "title latestCode deployed deployedUrl slug updatedAt",
+  );
+  if (!website) {
+    throw new ExpressError("Website not found", 404);
+  }
+
+  if (!website.deployed) {
+    throw new ExpressError("Website is not deployed yet", 404);
   }
 
   return res.status(200).json(new ApiResponse(200, website));
@@ -479,4 +496,55 @@ export const deleteWebsite = wrapAsync(async (req, res) => {
   return res
     .status(200)
     .json(new ApiResponse(200, null, "Website deleted successfully"));
+});
+
+export const deployWebsite = wrapAsync(async (req, res) => {
+  const { websiteId } = req.params;
+  const { code } = req.body || {};
+
+  const website = await Website.findById(websiteId);
+  if (!website) {
+    throw new ExpressError("Website not found", 404);
+  }
+
+  if (website.user.toString() !== req.user.id.toString()) {
+    throw new ExpressError("Unauthorized", 403);
+  }
+
+  if (typeof code === "string" && code.trim()) {
+    website.latestCode = code;
+  }
+
+  if (!website.slug) {
+    website.slug =
+      website.title
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "") +
+      "-" +
+      websiteId +
+      Date.now();
+  }
+
+  const hostingBaseUrl =
+    process.env.HOSTING_BASE_URL || "http://localhost:5173";
+
+  website.deployed = true;
+  website.deployedUrl = `${hostingBaseUrl}/live-site/${website._id}`;
+  await website.save();
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        websiteId: website._id,
+        title: website.title,
+        latestCode: website.latestCode,
+        deployed: website.deployed,
+        deployedUrl: website.deployedUrl,
+        updatedAt: website.updatedAt,
+      },
+      "Website deployed successfully",
+    ),
+  );
 });

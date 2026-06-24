@@ -6,7 +6,9 @@ import {
   updateWebsite,
   getUserWebsites,
   getWebsiteById,
+  getLiveWebsite,
   deleteWebsite,
+  deployWebsite,
 } from "../controllers/website.controller.js";
 import {
   generateWebsiteValidation,
@@ -32,6 +34,8 @@ router.put(
 
 router.get("/websites", IsAuth, getUserWebsites);
 router.get("/website/:websiteId", IsAuth, getWebsiteById);
+router.get("/live-site/:websiteId", getLiveWebsite);
 router.delete("/website/:websiteId", IsAuth, deleteWebsite);
+router.post("/website/:websiteId/deploy", IsAuth, deployWebsite);
 
 export default router;

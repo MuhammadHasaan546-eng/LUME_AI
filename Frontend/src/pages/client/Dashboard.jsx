@@ -2,8 +2,9 @@ import React, { useEffect } from "react";
 import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import DashboardHeader from "@/components/client/Header";
-import { getUserWebsites } from "@/api/website";
+import { deployWebsite, getUserWebsites } from "@/api/website";
 import { useDispatch, useSelector } from "react-redux";
+import { toast } from "sonner";
 import {
   ArrowRight,
   CalendarDays,
@@ -11,6 +12,7 @@ import {
   Globe2,
   LayoutGrid,
   Loader2,
+  Rocket,
   Sparkles,
 } from "lucide-react";
 
@@ -38,6 +40,44 @@ const formatDate = (date) => {
   }).format(new Date(date));
 };
 
+const formatDateTime = (date) => {
+  if (!date) return "No updates yet";
+
+  return new Intl.DateTimeFormat("en", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(date));
+};
+
+const buildPreviewSrcDoc = (code = "") => {
+  const fallbackPreview = `
+    <div style="height:100vh;display:grid;place-items:center;background:#0f1020;color:#f8fafc;font-family:Inter,system-ui,sans-serif;text-align:center;padding:24px;">
+      <div>
+        <div style="font-size:28px;margin-bottom:10px;">✨</div>
+        <strong style="font-size:18px;">Website preview</strong>
+        <p style="margin:8px 0 0;color:#cbd5e1;font-size:13px;">Open editor to generate or update this website.</p>
+      </div>
+    </div>`;
+
+  const safeCode = code?.trim() || fallbackPreview;
+  const previewGuard = `
+<base href="about:srcdoc">
+<style>html,body{margin:0;overflow:hidden;} body{transform:scale(.38);transform-origin:top left;width:263%;height:263%;pointer-events:none;}</style>
+<script>
+  document.addEventListener('click', function (event) { event.preventDefault(); }, true);
+  document.addEventListener('submit', function (event) { event.preventDefault(); }, true);
+</script>`;
+
+  if (/<head[\s>]/i.test(safeCode)) {
+    return safeCode.replace(/<head([^>]*)>/i, `<head$1>${previewGuard}`);
+  }
+
+  return `${previewGuard}${safeCode}`;
+};
+
 const Dashboard = () => {
   const navigate = useNavigate();
   const dispatch = useDispatch();
@@ -48,6 +88,25 @@ const Dashboard = () => {
   useEffect(() => {
     dispatch(getUserWebsites());
   }, [dispatch]);
+
+  const handleQuickDeploy = async (event, website) => {
+    event.stopPropagation();
+
+    try {
+      const response = await dispatch(
+        deployWebsite({ websiteId: website._id, code: website.latestCode }),
+      ).unwrap();
+      toast.success(response.message || "Website deployed successfully.");
+      navigate(`/live-site/${website._id}`);
+    } catch (err) {
+      toast.error(err || "Deploy failed. Please try again.");
+    }
+  };
+
+  const handleOpenLiveSite = (event, website) => {
+    event.stopPropagation();
+    navigate(`/live-site/${website._id}`);
+  };
 
   return (
     <div className="min-h-screen bg-background text-foreground transition-colors duration-500 overflow-x-clip relative">
@@ -243,26 +302,33 @@ const Dashboard = () => {
                   className="group relative cursor-pointer overflow-hidden rounded-3xl border border-border/50 bg-card/70 p-5 shadow-sm backdrop-blur-xl transition-all hover:border-primary/30 hover:shadow-2xl hover:shadow-primary/10"
                 >
                   <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 via-purple-500/5 to-pink-500/10 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
-                  <div className="relative mb-5 grid h-36 place-items-center overflow-hidden rounded-2xl border border-border/40 bg-muted/30">
-                    <motion.div
-                      animate={{ y: [0, -8, 0] }}
-                      transition={{
-                        duration: 3,
-                        repeat: Infinity,
-                        delay: index * 0.15,
-                      }}
-                      className="grid h-16 w-16 place-items-center rounded-2xl bg-background shadow-xl"
-                    >
-                      <Code2 className="h-7 w-7 text-[#B94AF4]" />
-                    </motion.div>
-                    <div className="absolute bottom-3 left-3 right-3 h-2 rounded-full bg-background/80">
-                      <motion.div
-                        initial={{ width: "20%" }}
-                        whileInView={{ width: "76%" }}
-                        viewport={{ once: true }}
-                        transition={{ duration: 1, delay: 0.2 + index * 0.08 }}
-                        className="h-full rounded-full bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500"
-                      />
+                  <div className="relative mb-5 h-40 overflow-hidden rounded-2xl border border-border/40 bg-muted/30 shadow-inner">
+                    <iframe
+                      srcDoc={buildPreviewSrcDoc(website.latestCode)}
+                      title={`${website.title || "Website"} preview`}
+                      sandbox="allow-scripts"
+                      loading="lazy"
+                      className="h-full w-full bg-white"
+                    />
+                    <div className="absolute inset-x-3 top-3 flex items-center justify-between gap-2">
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-white/60 bg-background/85 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-foreground shadow-sm backdrop-blur-md">
+                        <Code2 className="h-3 w-3 text-[#B94AF4]" />
+                        Srcdoc
+                      </span>
+                      <span
+                        className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] shadow-sm backdrop-blur-md ${
+                          website.deployed
+                            ? "border-emerald-400/40 bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                            : "border-purple-400/40 bg-purple-500/15 text-purple-600 dark:text-purple-300"
+                        }`}
+                      >
+                        {website.deployed ? (
+                          <Globe2 className="h-3 w-3" />
+                        ) : (
+                          <Rocket className="h-3 w-3" />
+                        )}
+                        {website.deployed ? "Live" : "Deploy"}
+                      </span>
                     </div>
                   </div>
 
@@ -273,18 +339,50 @@ const Dashboard = () => {
                       </h4>
                       <p className="mt-1 flex items-center gap-2 text-xs font-semibold text-muted-foreground">
                         <CalendarDays className="h-3.5 w-3.5" />
-                        {formatDate(website.createdAt)}
+                        Created {formatDate(website.createdAt)}
+                      </p>
+                      <p className="mt-1 flex items-center gap-2 text-xs font-semibold text-muted-foreground">
+                        <Sparkles className="h-3.5 w-3.5 text-[#B94AF4]" />
+                        Latest update {formatDateTime(website.updatedAt)}
                       </p>
                     </div>
 
                     <div className="flex items-center justify-between border-t border-border/50 pt-4">
-                      <span className="rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-bold text-emerald-500">
-                        {website.deployed ? "Deployed" : "Draft"}
+                      <span
+                        className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold ${
+                          website.deployed
+                            ? "bg-emerald-500/10 text-emerald-500"
+                            : "bg-purple-500/10 text-purple-500"
+                        }`}
+                      >
+                        {website.deployed ? (
+                          <Globe2 className="h-3.5 w-3.5" />
+                        ) : (
+                          <Rocket className="h-3.5 w-3.5" />
+                        )}
+                        {website.deployed ? "Deployed" : "Deploy pending"}
                       </span>
-                      <span className="inline-flex items-center gap-1 text-xs font-bold text-primary transition-transform group-hover:translate-x-1">
-                        Open Editor
-                        <ArrowRight className="h-3.5 w-3.5" />
-                      </span>
+                      {website.deployed ? (
+                        <button
+                          type="button"
+                          onClick={(event) =>
+                            handleOpenLiveSite(event, website)
+                          }
+                          className="inline-flex items-center gap-1 text-xs font-bold text-primary transition-transform hover:translate-x-1"
+                        >
+                          Live Site
+                          <ArrowRight className="h-3.5 w-3.5" />
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={(event) => handleQuickDeploy(event, website)}
+                          className="inline-flex items-center gap-1 text-xs font-bold text-primary transition-transform hover:translate-x-1"
+                        >
+                          Deploy Now
+                          <Rocket className="h-3.5 w-3.5" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 </motion.article>

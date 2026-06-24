@@ -1,7 +1,9 @@
 import { createSlice } from "@reduxjs/toolkit";
 import {
   deleteWebsite,
+  deployWebsite,
   generateWebsite,
+  getLiveWebsite,
   getUserWebsites,
   getWebsiteById,
   updateWebsite,
@@ -14,6 +16,8 @@ const initialState = {
   websiteId: "",
   title: "",
   latestCode: "",
+  deployed: false,
+  deployedUrl: "",
   createdAt: "",
   updatedAt: "",
   credits: 0,
@@ -25,6 +29,8 @@ const applyWebsiteDetails = (state, payload) => {
   state.websiteId = payload.websiteId || payload._id || "";
   state.title = payload.title || "";
   state.latestCode = payload.latestCode || "";
+  state.deployed = Boolean(payload.deployed);
+  state.deployedUrl = payload.deployedUrl || "";
   state.createdAt = payload.createdAt || "";
   state.updatedAt = payload.updatedAt || "";
   state.currentWebsite = payload;
@@ -135,6 +141,44 @@ const websiteSlice = createSlice({
       .addCase(deleteWebsite.rejected, (state, action) => {
         state.isLoading = false;
         state.error = action.payload || "Failed to delete website";
+      })
+      .addCase(deployWebsite.pending, (state) => {
+        state.isLoading = true;
+        state.error = null;
+      })
+      .addCase(deployWebsite.fulfilled, (state, action) => {
+        state.isLoading = false;
+        state.error = null;
+        state.successMessage =
+          action.payload.message || "Website deployed successfully";
+        applyWebsiteDetails(state, action.payload.data);
+        state.websites = state.websites.map((website) =>
+          website._id === action.payload.data.websiteId ||
+          website._id === action.payload.data._id
+            ? {
+                ...website,
+                ...action.payload.data,
+                _id: website._id,
+              }
+            : website,
+        );
+      })
+      .addCase(deployWebsite.rejected, (state, action) => {
+        state.isLoading = false;
+        state.error = action.payload || "Failed to deploy website";
+      })
+      .addCase(getLiveWebsite.pending, (state) => {
+        state.isLoading = true;
+        state.error = null;
+      })
+      .addCase(getLiveWebsite.fulfilled, (state, action) => {
+        state.isLoading = false;
+        state.error = null;
+        applyWebsiteDetails(state, action.payload.data);
+      })
+      .addCase(getLiveWebsite.rejected, (state, action) => {
+        state.isLoading = false;
+        state.error = action.payload || "Failed to load live website";
       });
   },
 });

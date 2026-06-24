@@ -104,3 +104,41 @@ export const deleteWebsite = createAsyncThunk(
     }
   },
 );
+
+export const deployWebsite = createAsyncThunk(
+  "website/deployWebsite",
+  async ({ websiteId, code }, { rejectWithValue }) => {
+    try {
+      const res = await axios.post(
+        `${WEBSITE_API_URL}/website/${websiteId}/deploy`,
+        { code },
+
+        {
+          headers: {
+            "Content-Type": "application/json",
+          },
+          withCredentials: true,
+        },
+      );
+      return res.data;
+    } catch (error) {
+      const message = getErrorMessage(error, "Failed to deploy website");
+      console.error("Deploy Website Error:", message);
+      return rejectWithValue(message);
+    }
+  },
+);
+
+export const getLiveWebsite = createAsyncThunk(
+  "website/getLiveWebsite",
+  async (websiteId, { rejectWithValue }) => {
+    try {
+      const res = await axios.get(`${WEBSITE_API_URL}/live-site/${websiteId}`);
+      return res.data;
+    } catch (error) {
+      const message = getErrorMessage(error, "Failed to load live website");
+      console.error("Get Live Website Error:", message);
+      return rejectWithValue(message);
+    }
+  },
+);
