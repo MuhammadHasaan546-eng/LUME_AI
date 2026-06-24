@@ -20,6 +20,7 @@ import {
   Moon,
   MessageSquare,
   Columns,
+  Rocket,
 } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
@@ -292,6 +293,17 @@ const EditorPage = () => {
             </span>
           </button>
 
+          {/* NEW: Premium Deploy Action (Gradient Text & Italic) */}
+          <button
+            // onClick={handleDeploy || (() => {})}
+            className="flex items-center gap-1.5 text-xs font-bold bg-muted/30 border border-purple-500/30 hover:border-pink-500/60 px-3.5 py-2 rounded-xl transition-all shadow-sm hover:bg-muted/60 hover:shadow-[0_0_15px_-3px_rgba(236,72,153,0.2)] active:scale-[0.98]"
+          >
+            <Rocket className="w-3.5 h-3.5 text-purple-400 stroke-[2.5]" />
+            <span className="bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 bg-clip-text text-transparent italic tracking-wide">
+              Deploy
+            </span>
+          </button>
+
           {/* Export Build Button (Luxury Highlight) */}
           <button
             onClick={handleDownload}
@@ -445,7 +457,7 @@ const EditorPage = () => {
                                 }`}
                               >
                                 <p
-                                  className={`text-[10px] font-bold uppercase tracking-wider mb-0.5 ${isUser ? "text-zinc-200" : "text-zinc-400 dark:text-zinc-500"}`}
+                                  className={`text-[10px] font-bold uppercase tracking-wider mb-0.5 ${isUser ? "text-zinc-200" : "bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 bg-clip-text text-transparent "}`}
                                 >
                                   {isUser ? "You" : "Lume AI"}
                                 </p>
