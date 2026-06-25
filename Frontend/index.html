@@ -4,6 +4,27 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      (function () {
+        try {
+          var theme = localStorage.getItem("lume-theme") || "dark";
+          var prefersDark = window.matchMedia(
+            "(prefers-color-scheme: dark)",
+          ).matches;
+          var resolvedTheme =
+            theme === "system" ? (prefersDark ? "dark" : "light") : theme;
+
+          document.documentElement.classList.remove("light", "dark");
+          document.documentElement.classList.add(
+            resolvedTheme === "light" ? "light" : "dark",
+          );
+          document.documentElement.style.colorScheme =
+            resolvedTheme === "light" ? "light" : "dark";
+        } catch (_) {
+          document.documentElement.classList.add("dark");
+        }
+      })();
+    </script>
     <title>frontend</title>
   </head>
   <body>

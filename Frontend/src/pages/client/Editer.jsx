@@ -21,10 +21,10 @@ import {
   MessageSquare,
   Columns,
   Rocket,
+  Laptop,
 } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
-import { useTheme } from "next-themes";
 import { toast } from "sonner";
 import Editor from "@monaco-editor/react";
 import { deployWebsite, getWebsiteById, updateWebsite } from "@/api/website";
@@ -34,7 +34,6 @@ const EditorPage = () => {
   const navigate = useNavigate();
   const { codeId } = useParams();
   const dispatch = useDispatch();
-  const { setTheme } = useTheme();
   const chatEndRef = useRef(null);
   const { isLoading, latestCode, currentWebsite } = useSelector(
     (state) => state.website,
@@ -160,7 +159,6 @@ const EditorPage = () => {
 
   const handleThemeChange = (theme) => {
     dispatch(setThemePreference(theme));
-    setTheme(theme);
   };
 
   const toggleTheme = () => {
@@ -175,16 +173,21 @@ const EditorPage = () => {
     const sandboxGuard = `
 <base href="about:srcdoc">
 <script>
-  document.addEventListener('click', function (event) {
-    var link = event.target.closest && event.target.closest('a[href]');
-    if (!link) return;
-    var href = link.getAttribute('href') || '';
-    if (!href || href === '#' || href.charAt(0) === '#') return;
-    event.preventDefault();
-  }, true);
-  document.addEventListener('submit', function (event) {
-    event.preventDefault();
-  }, true);
+  (function () {
+    function preventUnsafeNavigation(event) {
+      var target = event.target;
+      var link = target && target.closest ? target.closest('a[href]') : null;
+      if (!link) return;
+      var href = link.getAttribute('href') || '';
+      if (!href || href === '#' || href.charAt(0) === '#') return;
+      event.preventDefault();
+    }
+
+    document.addEventListener('click', preventUnsafeNavigation, true);
+    document.addEventListener('submit', function (event) {
+      event.preventDefault();
+    }, true);
+  })();
 </script>`;
 
     if (/<head[\s>]/i.test(code)) {
@@ -279,6 +282,18 @@ const EditorPage = () => {
               title="Dark theme"
             >
               <Moon className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => handleThemeChange("system")}
+              className={`p-1.5 rounded-lg transition-all ${
+                selectedTheme === "system"
+                  ? "bg-background text-primary shadow-sm border border-border/40"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+              title="System theme"
+            >
+              <Laptop className="w-3.5 h-3.5" />
             </button>
           </div>
 
@@ -711,7 +726,7 @@ const EditorPage = () => {
               <iframe
                 srcDoc={previewCode}
                 title="Lume Production Sandbox Engine"
-                sandbox="allow-scripts allow-same-origin"
+                sandbox="allow-scripts"
                 className="w-full h-full bg-white border-0"
               />
             </motion.div>

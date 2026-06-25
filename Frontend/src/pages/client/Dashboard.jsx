@@ -67,8 +67,10 @@ const buildPreviewSrcDoc = (code = "") => {
 <base href="about:srcdoc">
 <style>html,body{margin:0;overflow:hidden;} body{transform:scale(.38);transform-origin:top left;width:263%;height:263%;pointer-events:none;}</style>
 <script>
-  document.addEventListener('click', function (event) { event.preventDefault(); }, true);
-  document.addEventListener('submit', function (event) { event.preventDefault(); }, true);
+  (function () {
+    document.addEventListener('click', function (event) { event.preventDefault(); }, true);
+    document.addEventListener('submit', function (event) { event.preventDefault(); }, true);
+  })();
 </script>`;
 
   if (/<head[\s>]/i.test(safeCode)) {
@@ -306,7 +308,7 @@ const Dashboard = () => {
                     <iframe
                       srcDoc={buildPreviewSrcDoc(website.latestCode)}
                       title={`${website.title || "Website"} preview`}
-                      sandbox="allow-scripts"
+                      sandbox="allow-scripts allow-top-navigation-by-user-activation allow-forms allow-modals allow-popups"
                       loading="lazy"
                       className="h-full w-full bg-white"
                     />

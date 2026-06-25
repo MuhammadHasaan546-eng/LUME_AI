@@ -12,7 +12,13 @@ import ThemeStoreSync from "./components/home/ThemeStoreSync";
 createRoot(document.getElementById("root")).render(
   <StrictMode>
     <Provider store={store}>
-      <ThemeProvider attribute="class" defaultTheme="dark">
+      <ThemeProvider
+        attribute="class"
+        defaultTheme="system"
+        storageKey="lume-theme"
+        enableSystem
+        disableTransitionOnChange
+      >
         <ThemeStoreSync />
         <AppRouter />
         <Toaster />

@@ -9,6 +9,7 @@ import Dashboard from "@/pages/client/Dashboard";
 import GeneratePage from "@/pages/client/Generate";
 import EditorPage from "@/pages/client/Editer";
 import LiveSite from "@/pages/public/LiveSite";
+import Price from "@/pages/public/Price";
 
 // 1. Loading component
 const PageLoader = () => (
@@ -42,6 +43,10 @@ export const AppRouter = () => {
             }
             return null;
           },
+        },
+        {
+          path: "pricing",
+          element: <Price />,
         },
         {
           path: "/login",

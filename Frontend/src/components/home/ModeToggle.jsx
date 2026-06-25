@@ -1,5 +1,4 @@
-import { Moon, Sun } from "lucide-react";
-import { useTheme } from "next-themes";
+import { Laptop, Moon, Sun } from "lucide-react";
 import { useDispatch } from "react-redux";
 import { Button } from "@/components/ui/button";
 import { setThemePreference } from "@/store/theme";
@@ -12,11 +11,9 @@ import {
 
 export function ModeToggle() {
   const dispatch = useDispatch();
-  const { setTheme } = useTheme();
 
   const handleThemeChange = (theme) => {
     dispatch(setThemePreference(theme));
-    setTheme(theme);
   };
 
   return (
@@ -40,7 +37,7 @@ export function ModeToggle() {
           Dark
         </DropdownMenuItem>
         <DropdownMenuItem onClick={() => handleThemeChange("system")}>
-          System
+          <Laptop className="mr-2 h-4 w-4" /> System
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
