@@ -24,11 +24,11 @@ export const STRIPE_PLANS = {
     credits: 500,
     prices: {
       monthly: {
-        priceId: "price_M12345_monthly", // Replace with real Stripe Price ID
+        priceId: process.env.STRIPE_PREMIUM_MONTHLY_PRICE_ID || "", // Stripe Dashboard price ID
         amount: 2900, // Stripe values cents me leta hai ($29 = 2900 cents)
       },
       yearly: {
-        priceId: "price_Y12345_yearly",
+        priceId: process.env.STRIPE_PREMIUM_YEARLY_PRICE_ID || "",
         amount: 2400, // $24/mo billed annually
       },
     },
@@ -38,11 +38,11 @@ export const STRIPE_PLANS = {
     credits: 1500,
     prices: {
       monthly: {
-        priceId: "price_E12345_monthly",
+        priceId: process.env.STRIPE_ENTERPRISE_MONTHLY_PRICE_ID || "",
         amount: 7900, // $79 = 7900 cents
       },
       yearly: {
-        priceId: "price_E12345_yearly",
+        priceId: process.env.STRIPE_ENTERPRISE_YEARLY_PRICE_ID || "",
         amount: 6500, // $65/mo billed annually
       },
     },

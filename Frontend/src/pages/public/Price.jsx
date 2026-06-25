@@ -1,8 +1,15 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Check, Sparkles, HelpCircle, ArrowRight, Coins } from "lucide-react";
+import { useDispatch, useSelector } from "react-redux";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { toast } from "sonner";
+import { createCheckoutSession, verifyCheckoutSession } from "@/api/billing";
+import { getCurrentUser } from "@/api/getUser";
+
 const pricingPlans = [
   {
+    planType: "free",
     name: "Starter",
     price: { monthly: 0, yearly: 0 },
     description: "Perfect for exploring AI web generation capabilities.",
@@ -18,6 +25,7 @@ const pricingPlans = [
     popular: false,
   },
   {
+    planType: "premium",
     name: "Pro Professional",
     price: { monthly: 29, yearly: 24 },
     description: "For creators and freelancers building high-end spaces.",
@@ -34,6 +42,7 @@ const pricingPlans = [
     popular: true,
   },
   {
+    planType: "enterprise",
     name: "Agency Studio",
     price: { monthly: 79, yearly: 65 },
     description: "Designed for high-performance scale and custom control.",
@@ -62,6 +71,78 @@ const particles = Array.from({ length: 14 }, (_, i) => ({
 
 const Price = () => {
   const [billingPeriod, setBillingPeriod] = useState("monthly");
+  const [loadingPlan, setLoadingPlan] = useState(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const dispatch = useDispatch();
+  const { isAuthenticated } = useSelector((state) => state.auth);
+
+  useEffect(() => {
+    const checkoutStatus = searchParams.get("checkout");
+    const sessionId = searchParams.get("session_id");
+
+    if (checkoutStatus === "cancelled") {
+      toast.info("Stripe checkout was cancelled.");
+      setSearchParams({}, { replace: true });
+      return;
+    }
+
+    if (checkoutStatus !== "success" || !sessionId) return;
+
+    const verifyPayment = async () => {
+      try {
+        const response = await verifyCheckoutSession(sessionId);
+        toast.success(response.message || "Payment verified successfully.");
+        await dispatch(getCurrentUser()).unwrap();
+      } catch (error) {
+        const message =
+          error.response?.data?.message ||
+          error.message ||
+          "Payment verification failed.";
+        toast.error(message);
+      } finally {
+        setSearchParams({}, { replace: true });
+      }
+    };
+
+    verifyPayment();
+  }, [dispatch, searchParams, setSearchParams]);
+
+  const handlePlanCheckout = async (plan) => {
+    if (plan.planType === "free") {
+      navigate(isAuthenticated ? "/dashboard" : "/login");
+      return;
+    }
+
+    if (!isAuthenticated) {
+      toast.info("Please log in before upgrading your plan.");
+      navigate("/login");
+      return;
+    }
+
+    setLoadingPlan(plan.planType);
+
+    try {
+      const response = await createCheckoutSession({
+        planType: plan.planType,
+        billingPeriod,
+      });
+      const checkoutUrl = response.data?.url;
+
+      if (!checkoutUrl) {
+        throw new Error("Stripe checkout URL was not returned.");
+      }
+
+      window.location.assign(checkoutUrl);
+    } catch (error) {
+      const message =
+        error.response?.data?.message ||
+        error.message ||
+        "Unable to start Stripe checkout.";
+      toast.error(message);
+      setLoadingPlan(null);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-[#f7f7f8] dark:bg-[#030303] text-zinc-900 dark:text-white px-6 py-20 relative overflow-hidden transition-colors duration-500">
@@ -242,13 +323,17 @@ const Price = () => {
 
               {/* Action Button */}
               <button
+                onClick={() => handlePlanCheckout(plan)}
+                disabled={loadingPlan === plan.planType}
                 className={`w-full py-3.5 px-4 rounded-xl text-xs font-bold transition-all duration-300 flex items-center justify-center gap-1.5 cursor-pointer border ${
                   plan.popular
                     ? "bg-zinc-950 dark:bg-white text-white dark:text-black border-zinc-950 dark:border-white hover:bg-zinc-800 dark:hover:bg-zinc-200 shadow-sm"
                     : "bg-purple-600 text-white border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 hover:bg-zinc-200 dark:hover:bg-zinc-800"
-                }`}
+                } disabled:opacity-60 disabled:cursor-not-allowed`}
               >
-                <span>{plan.cta}</span>
+                <span>
+                  {loadingPlan === plan.planType ? "Redirecting..." : plan.cta}
+                </span>
                 <ArrowRight className="w-3.5 h-3.5 stroke-[2.5]" />
               </button>
 
