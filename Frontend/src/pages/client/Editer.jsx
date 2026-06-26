@@ -29,6 +29,7 @@ import { toast } from "sonner";
 import Editor from "@monaco-editor/react";
 import { deployWebsite, getWebsiteById, updateWebsite } from "@/api/website";
 import { setThemePreference } from "@/store/theme";
+import useWebContainer from "@/hooks/useWebContainer";
 
 const EditorPage = () => {
   const navigate = useNavigate();
@@ -61,12 +62,44 @@ const EditorPage = () => {
   // Mobile Display View Toggle
   const [mobileActiveView, setMobileActiveView] = useState("editor");
 
+  // WebContainer-powered live preview
+  const {
+    status: wcStatus,
+    previewUrl: wcPreviewUrl,
+    error: wcError,
+    boot: bootWebContainer,
+    updatePreview: updateWebContainerPreview,
+  } = useWebContainer();
+
   // Sync state with background data stream
   useEffect(() => {
     if (latestCode) {
       setCode(latestCode);
     }
   }, [latestCode]);
+
+  // Boot the WebContainer once we have initial code.
+  useEffect(() => {
+    if (code && wcStatus === "idle") {
+      bootWebContainer(code);
+    }
+  }, [code, wcStatus, bootWebContainer]);
+
+  // Debounced live-update: write code to the container on every change.
+  useEffect(() => {
+    if (wcStatus !== "running" || !code) return;
+    const debounce = setTimeout(() => {
+      updateWebContainerPreview(code);
+    }, 600);
+    return () => clearTimeout(debounce);
+  }, [code, wcStatus, updateWebContainerPreview]);
+
+  // Surface WebContainer errors as toasts.
+  useEffect(() => {
+    if (wcError) {
+      toast.error(wcError);
+    }
+  }, [wcError]);
 
   useEffect(() => {
     if (!codeId) return;
@@ -691,7 +724,10 @@ const EditorPage = () => {
           {/* Sandbox Wrapper Frame */}
           <div className="flex-1 flex items-center justify-center overflow-hidden bg-zinc-200/50 dark:bg-zinc-950/40 rounded-xl border border-zinc-200 dark:border-zinc-900/60 p-1 relative">
             <AnimatePresence>
-              {(isCompiling || isLoading) && (
+              {(isCompiling ||
+                isLoading ||
+                wcStatus === "booting" ||
+                wcStatus === "mounting") && (
                 <motion.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
@@ -700,7 +736,15 @@ const EditorPage = () => {
                 >
                   <RefreshCw className="w-4 h-4 text-[#4C7294] animate-spin" />
                   <span className="text-[11px] font-mono text-zinc-400 dark:text-zinc-500 tracking-wider">
-                    Syncing Document Sandbox Nodes...
+                    {wcStatus === "booting" &&
+                      "Booting WebContainer runtime..."}
+                    {wcStatus === "mounting" &&
+                      "Mounting project filesystem..."}
+                    {(isCompiling ||
+                      (isLoading &&
+                        wcStatus !== "booting" &&
+                        wcStatus !== "mounting")) &&
+                      "Syncing Document Sandbox Nodes..."}
                   </span>
                 </motion.div>
               )}
@@ -724,9 +768,10 @@ const EditorPage = () => {
                 </div>
               )}
               <iframe
-                srcDoc={previewCode}
+                src={wcPreviewUrl || undefined}
+                srcDoc={wcPreviewUrl ? undefined : previewCode}
                 title="Lume Production Sandbox Engine"
-                sandbox="allow-scripts"
+                sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
                 className="w-full h-full bg-white border-0"
               />
             </motion.div>
@@ -735,10 +780,20 @@ const EditorPage = () => {
           {/* Footer Engine Status */}
           <div className="flex items-center justify-between text-[10px] font-mono text-zinc-400 dark:text-zinc-600 pt-3 border-t border-zinc-200 dark:border-zinc-900/60 mt-4 shrink-0">
             <span className="flex items-center gap-1">
-              <span className="w-1 h-1 rounded-full bg-emerald-500" /> COMPILER:
-              STATUS_OK
+              <span
+                className={`w-1 h-1 rounded-full ${
+                  wcStatus === "running"
+                    ? "bg-emerald-500"
+                    : wcStatus === "error"
+                      ? "bg-red-500"
+                      : "bg-amber-500"
+                }`}
+              />{" "}
+              WEBCONTAINER: {wcStatus.toUpperCase()}
             </span>
-            <span className="hidden xs:inline">Sandboxed Execution Node</span>
+            <span className="hidden xs:inline">
+              {wcPreviewUrl ? "Live Node Runtime" : "Sandboxed Execution Node"}
+            </span>
           </div>
         </div>
       </div>
