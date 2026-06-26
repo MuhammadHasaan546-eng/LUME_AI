@@ -6,7 +6,7 @@ import { Provider } from "react-redux";
 import store from "./store/store";
 
 import { Toaster } from "./components/ui/sonner";
-import { AppRouter } from "./routes/AppRouter";
+import App from "./App";
 import ThemeStoreSync from "./components/home/ThemeStoreSync";
 
 createRoot(document.getElementById("root")).render(
@@ -20,7 +20,7 @@ createRoot(document.getElementById("root")).render(
         disableTransitionOnChange
       >
         <ThemeStoreSync />
-        <AppRouter />
+        <App />
         <Toaster />
       </ThemeProvider>
     </Provider>

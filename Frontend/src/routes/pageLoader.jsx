@@ -1,11 +1,39 @@
 import React, { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
-export default function LumePremiumLoader({ onComplete }) {
+export default function LumePremiumLoader({ onComplete, isLoading }) {
   const [progress, setProgress] = useState(0);
   const [isDone, setIsDone] = useState(false);
 
   useEffect(() => {
+    // Controlled mode — isLoading prop is explicitly provided
+    if (isLoading !== undefined) {
+      if (!isLoading) {
+        // Loading complete — fast finish to 100% then exit
+        setProgress(100);
+        const t = setTimeout(() => setIsDone(true), 400);
+        return () => clearTimeout(t);
+      }
+
+      // Loading in progress — simulate progress up to 90% and hold
+      const intervalTime = 25;
+      const maxProgress = 90;
+      const duration = 3000;
+      const increment = maxProgress / (duration / intervalTime);
+      let currentProgress = 0;
+
+      const timer = setInterval(() => {
+        currentProgress = Math.min(currentProgress + increment, maxProgress);
+        setProgress(Math.floor(currentProgress));
+        if (currentProgress >= maxProgress) {
+          clearInterval(timer);
+        }
+      }, intervalTime);
+
+      return () => clearInterval(timer);
+    }
+
+    // Uncontrolled mode (original behavior) — for HydrateFallback / fallbackElement
     const duration = 3000; // 3 seconds luxury progression
     const intervalTime = 25;
     const steps = duration / intervalTime;
@@ -29,7 +57,7 @@ export default function LumePremiumLoader({ onComplete }) {
     }, intervalTime);
 
     return () => clearInterval(timer);
-  }, []);
+  }, [isLoading]);
 
   // Characters split transition for "LUME" branding
   const brandingLetters = ["L", "U", "M", "E"];

@@ -8,6 +8,9 @@ import GeneratePage from "@/pages/client/Generate";
 import EditorPage from "@/pages/client/Editer";
 import LiveSite from "@/pages/public/LiveSite";
 import Price from "@/pages/public/Price";
+import Features from "@/pages/public/Features";
+import Showcase from "@/pages/public/Showcase";
+import Docs from "@/pages/public/Docs";
 import { authLoader } from "@/utils/authLoader";
 import LumeMotionLoader from "./pageLoader";
 import LumeNotFound from "@/pages/public/LumeNotFound";
@@ -39,6 +42,21 @@ export const AppRouter = () => {
           loader: authLoader,
         },
         {
+          path: "features",
+          element: <Features />,
+          loader: authLoader,
+        },
+        {
+          path: "showcase",
+          element: <Showcase />,
+          loader: authLoader,
+        },
+        {
+          path: "docs",
+          element: <Docs />,
+          loader: authLoader,
+        },
+        {
           path: "pricing",
           element: <Price />,
           loader: authLoader,
@@ -46,7 +64,7 @@ export const AppRouter = () => {
         {
           path: "/login",
           element: (
-            <CheckAuth>
+            <CheckAuth requireAuth={false}>
               <LoginModal />
             </CheckAuth>
           ),
@@ -55,17 +73,29 @@ export const AppRouter = () => {
     },
     {
       path: "dashboard",
-      element: <Dashboard />,
+      element: (
+        <CheckAuth>
+          <Dashboard />
+        </CheckAuth>
+      ),
       loader: authLoader,
     },
     {
       path: "generate",
-      element: <GeneratePage />,
+      element: (
+        <CheckAuth>
+          <GeneratePage />
+        </CheckAuth>
+      ),
       loader: authLoader,
     },
     {
       path: "editor/:codeId",
-      element: <EditorPage />,
+      element: (
+        <CheckAuth>
+          <EditorPage />
+        </CheckAuth>
+      ),
       loader: authLoader,
     },
     {

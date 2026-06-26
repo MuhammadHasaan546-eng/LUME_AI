@@ -14,6 +14,7 @@ import { Sparkles } from "lucide-react";
 import { signInWithPopup } from "firebase/auth";
 import { auth, provider } from "@/config/firebase";
 import { useDispatch } from "react-redux";
+import { Link } from "react-router-dom";
 import { login } from "@/api/auth";
 import { toast } from "sonner";
 
@@ -123,13 +124,13 @@ const LoginModal = ({ children }) => {
 
           <p className="text-[11px] text-center text-muted-foreground px-4 pb-4">
             By signing in, you agree to our
-            <a href="#" className="text-primary hover:underline mx-1">
+            <Link to="#" className="text-primary hover:underline mx-1">
               Terms
-            </a>{" "}
+            </Link>{" "}
             &
-            <a href="#" className="text-primary hover:underline ml-1">
+            <Link to="#" className="text-primary hover:underline ml-1">
               Privacy Policy
-            </a>
+            </Link>
             .
           </p>
         </motion.div>

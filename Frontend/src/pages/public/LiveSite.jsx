@@ -3,7 +3,8 @@ import { motion } from "framer-motion";
 import { useParams } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { getLiveWebsite } from "@/api/website";
-import { Loader2, Globe2 } from "lucide-react";
+import { Globe2 } from "lucide-react";
+import LumeMotionLoader from "@/routes/pageLoader";
 
 const buildPreviewSrcDoc = (code = "") => {
   const fallbackPreview = `
@@ -60,16 +61,7 @@ const LiveSiteView = () => {
   );
 
   if (isLoading) {
-    return (
-      <div className="min-h-screen bg-black grid place-items-center">
-        <div className="text-center space-y-4">
-          <Loader2 className="h-8 w-8 animate-spin text-purple-500 mx-auto" />
-          <p className="text-xs font-medium tracking-[0.2em] text-zinc-500 uppercase">
-            Loading Live Space
-          </p>
-        </div>
-      </div>
-    );
+    return <LumeMotionLoader isLoading={isLoading} />;
   }
 
   if (error || (!isLoading && !currentSite)) {

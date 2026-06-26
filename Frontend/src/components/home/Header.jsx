@@ -1,7 +1,7 @@
 import React from "react";
 import { motion } from "framer-motion";
 import { useSelector, useDispatch } from "react-redux";
-// import { logout } from "@/store/authSlice"; // Apne slice ke mutabiq uncomment karein
+import { Link, useNavigate } from "react-router-dom";
 
 // UI Components
 import { Button } from "@/components/ui/button";
@@ -42,14 +42,15 @@ import { logout } from "@/api/auth";
 import { toast } from "sonner";
 
 const navItems = [
-  { name: "Features", href: "#" },
-  { name: "Showcase", href: "#" },
-  { name: "Pricing", href: "#" },
-  { name: "Docs", href: "#" },
+  { name: "Features", href: "/features" },
+  { name: "Showcase", href: "/showcase" },
+  { name: "Pricing", href: "/pricing" },
+  { name: "Docs", href: "/docs" },
 ];
 
 const Header = () => {
   const dispatch = useDispatch();
+  const navigate = useNavigate();
 
   // Redux state
   const userData = useSelector((state) => state.auth.user);
@@ -94,17 +95,20 @@ const Header = () => {
         {/* Desktop Navigation */}
         <nav className="hidden md:flex items-center gap-8 text-sm font-medium">
           {navItems.map((item, index) => (
-            <motion.a
+            <motion.div
               key={item.name}
-              href={item.href}
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: index * 0.1 + 0.2 }}
-              className="text-muted-foreground transition-colors hover:text-primary relative group"
             >
-              {item.name}
-              <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-primary transition-all group-hover:w-full" />
-            </motion.a>
+              <Link
+                to={item.href}
+                className="text-muted-foreground transition-colors hover:text-primary relative group inline-block"
+              >
+                {item.name}
+                <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-primary transition-all group-hover:w-full" />
+              </Link>
+            </motion.div>
           ))}
         </nav>
 
@@ -237,13 +241,13 @@ const Header = () => {
                   {/* Navigation Links */}
                   <nav className="flex flex-col gap-4">
                     {navItems.map((item) => (
-                      <a
+                      <Link
                         key={item.name}
-                        href={item.href}
+                        to={item.href}
                         className="text-base font-medium tracking-tight text-muted-foreground hover:text-primary transition-colors py-1.5 px-1 rounded-lg hover:bg-primary/5 transition-all"
                       >
                         {item.name}
-                      </a>
+                      </Link>
                     ))}
                   </nav>
                 </div>

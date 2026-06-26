@@ -13,11 +13,13 @@ export const getCurrentUser = createAsyncThunk(
         },
         withCredentials: true,
       });
-      console.log(res.data);
       return res.data;
     } catch (error) {
-      const message = error.response.data.message || error.message;
-      console.error("Login Error:", message);
+      const message =
+        error?.response?.data?.message ||
+        error?.message ||
+        "Failed to fetch user.";
+      console.error("Get Current User Error:", message);
       return thunkAPI.rejectWithValue(message);
     }
   },
