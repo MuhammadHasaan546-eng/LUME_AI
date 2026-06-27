@@ -18,4 +18,18 @@ export default defineConfig({
   optimizeDeps: {
     include: ["@monaco-editor/react"],
   },
+  server: {
+    // WebContainer API requires cross-origin isolation (SharedArrayBuffer).
+    // These headers enable COOP/COEP so the browser grants crossOriginIsolated.
+    headers: {
+      "Cross-Origin-Opener-Policy": "same-origin",
+      "Cross-Origin-Embedder-Policy": "require-corp",
+    },
+  },
+  preview: {
+    headers: {
+      "Cross-Origin-Opener-Policy": "same-origin",
+      "Cross-Origin-Embedder-Policy": "require-corp",
+    },
+  },
 });

@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import React, { useState, useEffect, useRef } from "react";
+import { motion, useScroll, useTransform } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +15,10 @@ import {
   Wand2,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import TiltCard from "@/components/home/TiltCard";
+import StatsSection from "@/components/home/StatsSection";
+import TestimonialSlider from "@/components/home/TestimonialSlider";
+import { FaqAccordion } from "@/components/home/FaqAccordion";
 
 const Home = () => {
   // --- Typewriter Effect Logic ---
@@ -68,19 +72,77 @@ const Home = () => {
   };
 
   const itemVariants = {
-    hidden: { y: 20, opacity: 0 },
-    visible: { y: 0, opacity: 1 },
+    hidden: { y: 30, opacity: 0 },
+    visible: {
+      y: 0,
+      opacity: 1,
+      transition: { duration: 0.6, ease: "easeOut" },
+    },
   };
+
+  // Scroll Animation Configurations
+  const scrollFadeUp = {
+    hidden: { y: 50, opacity: 0 },
+    visible: {
+      y: 0,
+      opacity: 1,
+      transition: { duration: 0.6, ease: "easeOut" },
+    },
+  };
+
+  // --- Scroll-To-Move Text Logic ---
+  const tickerRef = useRef(null);
+  const { scrollYProgress } = useScroll({
+    target: tickerRef,
+    offset: ["start end", "end start"],
+  });
+
+  // Row 1 slides leftward, Row 2 slides rightward as you scroll down
+  const xLeft = useTransform(scrollYProgress, [0, 1], [0, -500]);
+  const xRight = useTransform(scrollYProgress, [0, 1], [-500, 0]);
+
   const navigate = useNavigate();
 
   return (
-    <div className="flex flex-col min-h-screen overflow-hidden bg-background">
+    <div className="relative flex flex-col min-h-screen overflow-hidden bg-background">
       {/* --- HERO SECTION --- */}
-      <section className="relative pt-24 pb-32 px-6">
-        {/* Futuristic Background Effects */}
-        <div className="absolute inset-0 -z-10 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:40px_40px] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)]" />
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/20 blur-[120px] -z-20 rounded-full animate-pulse" />
-        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-purple-500/10 blur-[120px] -z-20 rounded-full animate-pulse delay-700" />
+      <section className="relative pt-24 pb-32 px-6 overflow-hidden">
+        {/* Futuristic Background Grid & Ambient Animations */}
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 1.5 }}
+          className="absolute inset-0 -z-10 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:40px_40px] [mask-image:radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)]"
+        />
+
+        {/* Dynamic Fluid Blobs */}
+        <motion.div
+          animate={{
+            x: [0, 30, -20, 0],
+            y: [0, -40, 20, 0],
+            scale: [1, 1.1, 0.9, 1],
+          }}
+          transition={{
+            duration: 12,
+            repeat: Infinity,
+            ease: "easeInOut",
+          }}
+          className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/20 blur-[120px] -z-20 rounded-full"
+        />
+        <motion.div
+          animate={{
+            x: [0, -40, 30, 0],
+            y: [0, 30, -40, 0],
+            scale: [1, 0.9, 1.1, 1],
+          }}
+          transition={{
+            duration: 15,
+            repeat: Infinity,
+            ease: "easeInOut",
+            delay: 1,
+          }}
+          className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-purple-500/15 blur-[120px] -z-20 rounded-full"
+        />
 
         <motion.div
           variants={containerVariants}
@@ -126,6 +188,7 @@ const Home = () => {
               className="border-none bg-transparent text-lg focus-visible:ring-0 shadow-none h-14"
             />
             <Button
+              onClick={() => navigate("/generate")}
               size="lg"
               className="w-full md:w-auto px-10 h-14 rounded-xl font-black bg-primary hover:shadow-[0_0_20px_rgba(var(--primary),0.5)] transition-all"
             >
@@ -153,10 +216,67 @@ const Home = () => {
         </motion.div>
       </section>
 
+      {/* --- SCROLL-TO-MOVE TEXT TICKER --- */}
+      <section
+        ref={tickerRef}
+        className="py-12 bg-background/50 border-y border-primary/5 overflow-hidden select-none"
+      >
+        <div className="flex flex-col gap-2 max-w-full">
+          {/* Row 1: Leftward tracking display */}
+          <motion.div
+            style={{ x: xLeft }}
+            className="flex whitespace-nowrap text-6xl md:text-8xl font-black uppercase tracking-tighter"
+          >
+            {Array(4)
+              .fill("")
+              .map((_, i) => (
+                <span
+                  key={i}
+                  className="flex items-center text-muted-foreground/15"
+                >
+                  Lume AI Engine <span className="mx-6 text-primary/30">•</span>
+                  Next-Gen Framework{" "}
+                  <span className="mx-6 text-primary/30">•</span>
+                  Instant Launch <span className="mx-6 text-primary/30">•</span>
+                </span>
+              ))}
+          </motion.div>
+
+          {/* Row 2: Rightward tracking outline display */}
+          <motion.div
+            style={{ x: xRight }}
+            className="flex whitespace-nowrap text-6xl md:text-8xl font-black uppercase tracking-tighter"
+          >
+            {Array(4)
+              .fill("")
+              .map((_, i) => (
+                <span
+                  key={i}
+                  className="flex items-center text-transparent"
+                  style={{ WebkitTextStroke: "1px rgba(156, 163, 175, 0.2)" }}
+                >
+                  Hyper Performance{" "}
+                  <span className="mx-6 text-purple-500/20">•</span>
+                  Adaptive Layouts{" "}
+                  <span className="mx-6 text-purple-500/20">•</span>
+                  Edge Delivery{" "}
+                  <span className="mx-6 text-purple-500/20">•</span>
+                </span>
+              ))}
+          </motion.div>
+        </div>
+      </section>
+
       {/* --- PROCESS SECTION --- */}
-      <section className="py-24 px-6 border-y border-primary/5 bg-secondary/10">
+      <section className="py-24 px-6 border-b border-primary/5 bg-secondary/10 relative">
         <div className="container mx-auto">
-          <div className="grid md:grid-cols-3 gap-12">
+          <motion.div
+            variants={containerVariants}
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true, margin: "-100px" }}
+            className="grid md:grid-cols-3 gap-12"
+          >
             {[
               {
                 icon: <Wand2 className="h-8 w-8" />,
@@ -176,37 +296,66 @@ const Home = () => {
             ].map((step, i) => (
               <motion.div
                 key={i}
-                whileHover={{ y: -10 }}
-                className="p-8 rounded-3xl border border-primary/5 bg-background/50 hover:bg-background transition-all group"
+                variants={scrollFadeUp}
+                className="lume-tilt-perspective"
               >
-                <div className="mb-6 text-primary p-3 bg-primary/10 w-fit rounded-2xl group-hover:scale-110 transition-transform">
-                  {step.icon}
-                </div>
-                <h3 className="text-xl font-bold mb-3 tracking-tight">
-                  {step.title}
-                </h3>
-                <p className="text-muted-foreground text-sm leading-relaxed">
-                  {step.desc}
-                </p>
+                <TiltCard className="h-full">
+                  <div className="p-8 h-full">
+                    <div className="mb-6 text-primary p-3 bg-primary/10 w-fit rounded-2xl group-hover/tilt:scale-125 group-hover/tilt:rotate-6 transition-transform duration-500">
+                      {step.icon}
+                    </div>
+                    <h3 className="text-xl font-bold mb-3 tracking-tight">
+                      {step.title}
+                    </h3>
+                    <p className="text-muted-foreground text-sm leading-relaxed">
+                      {step.desc}
+                    </p>
+                  </div>
+                </TiltCard>
               </motion.div>
             ))}
-          </div>
+          </motion.div>
         </div>
       </section>
 
+      {/* --- LIVE STATISTICS COUNTER --- */}
+      <StatsSection />
+
       {/* --- FEATURES GRID --- */}
-      <section className="py-32 bg-background">
+      <section className="py-32 bg-background relative overflow-hidden">
+        {/* Extra Ambient Blur Layer for Features Section */}
+        <motion.div
+          animate={{
+            scale: [1, 1.2, 1],
+            opacity: [0.05, 0.12, 0.05],
+          }}
+          transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
+          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-blue-500/10 blur-[150px] -z-10 rounded-full"
+        />
+
         <div className="container mx-auto px-6">
-          <div className="text-center mb-20">
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true, margin: "-100px" }}
+            transition={{ duration: 0.6 }}
+            className="text-center mb-20"
+          >
             <h2 className="text-4xl font-black tracking-tighter mb-4 uppercase">
               Hyper-Performance
             </h2>
             <p className="text-muted-foreground">
               The most advanced AI engine for the modern web.
             </p>
-          </div>
+          </motion.div>
 
-          <div className="grid md:grid-cols-3 gap-6">
+          <motion.div
+            variants={containerVariants}
+            initial="hidden"
+            whileInView="visible"
+            viewport={{ once: true, margin: "-100px" }}
+            className="grid md:grid-cols-3 gap-6"
+          >
             {[
               {
                 icon: <Zap className="text-yellow-500" />,
@@ -224,30 +373,54 @@ const Home = () => {
                 desc: "Lightning fast global delivery.",
               },
             ].map((feature, i) => (
-              <Card
+              <motion.div
                 key={i}
-                className="bg-card/50 border-primary/5 hover:border-primary/20 transition-all"
+                variants={scrollFadeUp}
+                className="lume-tilt-perspective"
               >
-                <CardContent className="pt-8">
-                  <div className="mb-4 bg-primary/10 w-12 h-12 rounded-xl flex items-center justify-center">
-                    {feature.icon}
-                  </div>
-                  <h3 className="text-xl font-bold mb-2">{feature.title}</h3>
-                  <p className="text-muted-foreground text-sm">
-                    {feature.desc}
-                  </p>
-                </CardContent>
-              </Card>
+                <TiltCard className="h-full">
+                  <CardContent className="pt-8">
+                    <div className="mb-4 bg-primary/10 w-12 h-12 rounded-xl flex items-center justify-center group-hover/tilt:scale-125 group-hover/tilt:rotate-6 transition-transform duration-500">
+                      {feature.icon}
+                    </div>
+                    <h3 className="text-xl font-bold mb-2">{feature.title}</h3>
+                    <p className="text-muted-foreground text-sm">
+                      {feature.desc}
+                    </p>
+                  </CardContent>
+                </TiltCard>
+              </motion.div>
             ))}
-          </div>
+          </motion.div>
         </div>
       </section>
+
+      {/* --- INTERACTIVE TESTIMONIAL SLIDER & LOGO WALL --- */}
+      <TestimonialSlider />
+
+      {/* --- INTERACTIVE FAQ ACCORDION --- */}
+      <FaqAccordion />
 
       {/* --- CTA SECTION --- */}
       <section className="py-20 px-6">
         <div className="container mx-auto">
-          <div className="relative rounded-[2rem] overflow-hidden bg-primary px-8 py-20 text-center text-primary-foreground shadow-2xl">
-            <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.15),transparent)] animate-pulse" />
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            whileInView={{ opacity: 1, scale: 1 }}
+            viewport={{ once: true, margin: "-100px" }}
+            transition={{ duration: 0.6 }}
+            className="relative rounded-[2rem] overflow-hidden bg-primary px-8 py-20 text-center text-primary-foreground shadow-2xl"
+          >
+            {/* Smooth Breathing Glow behind CTA Content */}
+            <motion.div
+              animate={{
+                scale: [1, 1.15, 1],
+                opacity: [0.1, 0.25, 0.1],
+              }}
+              transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
+              className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.2),transparent_70%)]"
+            />
+
             <h2 className="relative text-4xl md:text-6xl font-black tracking-tighter mb-8 uppercase">
               Ready to build the future?
             </h2>
@@ -259,7 +432,7 @@ const Home = () => {
             >
               Start Building Now
             </Button>
-          </div>
+          </motion.div>
         </div>
       </section>
     </div>
