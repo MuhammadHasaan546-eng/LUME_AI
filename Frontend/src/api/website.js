@@ -142,3 +142,22 @@ export const getLiveWebsite = createAsyncThunk(
     }
   },
 );
+
+// PUBLIC — fetch all deployed websites for the public showcase gallery.
+// No authentication required.
+export const getShowcaseWebsites = createAsyncThunk(
+  "website/getShowcaseWebsites",
+  async (_, { rejectWithValue }) => {
+    try {
+      const res = await axios.get(`${WEBSITE_API_URL}/showcase`);
+      return res.data;
+    } catch (error) {
+      const message = getErrorMessage(
+        error,
+        "Failed to load showcase websites",
+      );
+      console.error("Get Showcase Websites Error:", message);
+      return rejectWithValue(message);
+    }
+  },
+);

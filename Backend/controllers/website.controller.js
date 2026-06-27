@@ -462,6 +462,55 @@ export const getWebsiteById = wrapAsync(async (req, res) => {
   return res.status(200).json(new ApiResponse(200, website));
 });
 
+// Extract the first <img src="..."> URL from an HTML string.
+// Used to generate a lightweight thumbnail for the public showcase
+// without sending the full (heavy) latestCode to the frontend.
+function extractThumbnailFromCode(html = "") {
+  if (!html) return "";
+
+  // Match the first <img ... src="..." ...> occurrence (single/double quotes)
+  const imgMatch = html.match(/<img[^>]*\ssrc=["']([^"']+)["']/i);
+  if (imgMatch && imgMatch[1]) {
+    return imgMatch[1];
+  }
+
+  // Fallback: try to find an OpenGraph og:image meta tag
+  const ogMatch = html.match(
+    /<meta[^>]+property=["']og:image["'][^>]*content=["']([^"']+)["']/i,
+  );
+  if (ogMatch && ogMatch[1]) {
+    return ogMatch[1];
+  }
+
+  return "";
+}
+
+// PUBLIC endpoint — returns all deployed websites for the showcase gallery.
+// No authentication required. Only lightweight metadata is returned
+// (title, slug, deployedUrl, thumbnail, createdAt + creator name/avatar).
+export const getShowcaseWebsites = wrapAsync(async (req, res) => {
+  const websites = await Website.find({ deployed: true })
+    .populate("user", "name avatar")
+    .select("title slug deployedUrl latestCode createdAt user")
+    .sort({ createdAt: -1 });
+
+  // Map to a lightweight payload — strip the heavy latestCode and
+  // expose only a thumbnail image URL extracted from the HTML.
+  const showcase = websites.map((w) => ({
+    _id: w._id,
+    title: w.title,
+    slug: w.slug,
+    deployedUrl: w.deployedUrl,
+    thumbnail: extractThumbnailFromCode(w.latestCode),
+    createdAt: w.createdAt,
+    creator: w.user ? { name: w.user.name, avatar: w.user.avatar } : null,
+  }));
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, showcase, "Showcase websites fetched"));
+});
+
 export const getLiveWebsite = wrapAsync(async (req, res) => {
   const { websiteId } = req.params;
 

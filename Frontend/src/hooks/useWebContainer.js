@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { WebContainer } from "@webcontainer/api";
+import { WebContainer, configureAPIKey } from "@webcontainer/api";
 
 /**
  * useWebContainer
@@ -100,8 +100,10 @@ server.listen(3000, () => {
             );
           }
 
-          // Boot with the API key (required for production usage).
-          const container = await WebContainer.boot({ apikey: apiKey });
+          // Configure the API key (required for production usage),
+          // then boot the WebContainer. The key must be set before boot.
+          configureAPIKey(apiKey);
+          const container = await WebContainer.boot();
           containerRef.current = container;
 
           setStatus("mounting");

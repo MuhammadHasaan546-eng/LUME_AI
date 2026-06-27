@@ -42,10 +42,11 @@ import { logout } from "@/api/auth";
 import { toast } from "sonner";
 
 const navItems = [
-  { name: "Features", href: "/features" },
-  { name: "Showcase", href: "/showcase" },
-  { name: "Pricing", href: "/pricing" },
-  { name: "Docs", href: "/docs" },
+  { name: "Home", to: "/" },
+  { name: "Features", to: "/features" },
+  { name: "Showcase", to: "/showcase" },
+  { name: "Pricing", to: "/pricing" },
+  { name: "Docs", to: "/docs" },
 ];
 
 const Header = () => {
@@ -87,9 +88,11 @@ const Header = () => {
           <div className="bg-primary p-1.5 rounded-lg shadow-[0_0_20px_rgba(var(--primary),0.3)]">
             <Sparkles className="h-4 w-4 text-primary-foreground" />
           </div>
-          <span className="text-xl font-bold tracking-tighter">
-            LUME<span className="text-primary">.AI</span>
-          </span>
+          <Link to={"/"}>
+            <span className="text-xl font-bold tracking-tighter">
+              LUME<span className="text-primary">.AI</span>
+            </span>
+          </Link>
         </motion.div>
 
         {/* Desktop Navigation */}
@@ -102,7 +105,7 @@ const Header = () => {
               transition={{ delay: index * 0.1 + 0.2 }}
             >
               <Link
-                to={item.href}
+                to={item.to}
                 className="text-muted-foreground transition-colors hover:text-primary relative group inline-block"
               >
                 {item.name}
@@ -131,7 +134,11 @@ const Header = () => {
               </>
             ) : (
               <div className="flex items-center gap-4">
-                <Button variant="ghost" className="gap-2 text-sm font-medium">
+                <Button
+                  variant="ghost"
+                  className="gap-2 text-sm font-medium"
+                  onClick={() => navigate("/dashboard")}
+                >
                   <LayoutDashboard className="h-4 w-4" /> Dashboard
                 </Button>
 
@@ -234,7 +241,10 @@ const Header = () => {
                       <div className="bg-primary/10 p-1 rounded-md">
                         <Sparkles className="h-4 w-4 text-primary" />
                       </div>
-                      LUME<span className="text-primary">.AI</span>
+
+                      <Link to={"/"}>
+                        LUME<span className="text-primary">.AI</span>
+                      </Link>
                     </SheetTitle>
                   </SheetHeader>
 
@@ -243,7 +253,7 @@ const Header = () => {
                     {navItems.map((item) => (
                       <Link
                         key={item.name}
-                        to={item.href}
+                        to={item.to}
                         className="text-base font-medium tracking-tight text-muted-foreground hover:text-primary transition-colors py-1.5 px-1 rounded-lg hover:bg-primary/5 transition-all"
                       >
                         {item.name}

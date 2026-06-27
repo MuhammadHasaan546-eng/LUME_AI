@@ -9,6 +9,18 @@ import { stripeWebhook } from "./controllers/billing.controller.js";
 import cookieParser from "cookie-parser";
 import cors from "cors";
 
+// Fail fast if required environment variables are missing.
+// This prevents silent 500s on /api/auth/google and /api/user/me.
+const REQUIRED_ENV = ["JWT_SECRET", "MONGODB_URL"];
+const missingEnv = REQUIRED_ENV.filter((key) => !process.env[key]);
+if (missingEnv.length) {
+  console.error(
+    `❌ Missing required environment variables: ${missingEnv.join(", ")}`,
+  );
+  console.error("   Add them to Backend/.env before starting the server.");
+  process.exit(1);
+}
+
 const app = express();
 
 main();

@@ -7,6 +7,7 @@ import {
   getUserWebsites,
   getWebsiteById,
   getLiveWebsite,
+  getShowcaseWebsites,
   deleteWebsite,
   deployWebsite,
 } from "../controllers/website.controller.js";
@@ -31,6 +32,9 @@ router.put(
   validate(updateWebsiteValidation),
   updateWebsite,
 );
+
+// PUBLIC — showcase gallery of all deployed websites (no auth required)
+router.get("/showcase", getShowcaseWebsites);
 
 router.get("/websites", IsAuth, getUserWebsites);
 router.get("/website/:websiteId", IsAuth, getWebsiteById);

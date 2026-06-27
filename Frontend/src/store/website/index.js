@@ -4,6 +4,7 @@ import {
   deployWebsite,
   generateWebsite,
   getLiveWebsite,
+  getShowcaseWebsites,
   getUserWebsites,
   getWebsiteById,
   updateWebsite,
@@ -23,6 +24,10 @@ const initialState = {
   credits: 0,
   websites: [],
   currentWebsite: null,
+  // Public showcase gallery (all deployed websites)
+  showcase: [],
+  showcaseLoading: false,
+  showcaseError: null,
 };
 
 const applyWebsiteDetails = (state, payload) => {
@@ -179,6 +184,21 @@ const websiteSlice = createSlice({
       .addCase(getLiveWebsite.rejected, (state, action) => {
         state.isLoading = false;
         state.error = action.payload || "Failed to load live website";
+      })
+      // ── Public showcase gallery ──
+      .addCase(getShowcaseWebsites.pending, (state) => {
+        state.showcaseLoading = true;
+        state.showcaseError = null;
+      })
+      .addCase(getShowcaseWebsites.fulfilled, (state, action) => {
+        state.showcaseLoading = false;
+        state.showcaseError = null;
+        state.showcase = action.payload.data || [];
+      })
+      .addCase(getShowcaseWebsites.rejected, (state, action) => {
+        state.showcaseLoading = false;
+        state.showcaseError =
+          action.payload || "Failed to load showcase websites";
       });
   },
 });

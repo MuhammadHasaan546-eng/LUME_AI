@@ -1,6 +1,7 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { motion } from "framer-motion";
 import { Link } from "react-router-dom";
+import { useDispatch, useSelector } from "react-redux";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -11,108 +12,40 @@ import {
   Eye,
   TrendingUp,
   Layout,
-  ShoppingBag,
-  Newspaper,
-  Briefcase,
-  Utensils,
-  Camera,
+  Globe,
+  Loader2,
+  AlertCircle,
+  Calendar,
 } from "lucide-react";
+import { getShowcaseWebsites } from "@/api/website";
 
-const showcaseProjects = [
-  {
-    id: 1,
-    title: "Aurora Luxury Watches",
-    category: "E-Commerce",
-    description:
-      "A premium dark-themed watch store with cinematic product showcases and seamless checkout.",
-    image:
-      "https://images.unsplash.com/photo-1523275335684-37898b6baf30?q=80&w=2370&auto=format&fit=crop",
-    likes: "12.4k",
-    views: "89.2k",
-    gradient: "from-amber-500/20 to-transparent",
-    icon: ShoppingBag,
-    tags: ["Dark Mode", "E-Commerce", "Animations"],
-  },
-  {
-    id: 2,
-    title: "Nexus Tech Portfolio",
-    category: "Portfolio",
-    description:
-      "A developer portfolio with interactive terminal, project grid, and smooth page transitions.",
-    image:
-      "https://images.unsplash.com/photo-1467232004584-a241de8bcf5d?q=80&w=2370&auto=format&fit=crop",
-    likes: "8.7k",
-    views: "54.1k",
-    gradient: "from-blue-500/20 to-transparent",
-    icon: Briefcase,
-    tags: ["Portfolio", "Terminal", "Developer"],
-  },
-  {
-    id: 3,
-    title: "Brew & Bean Café",
-    category: "Restaurant",
-    description:
-      "A cozy coffee shop landing page with menu cards, reservation form, and warm aesthetics.",
-    image:
-      "https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?q=80&w=2370&auto=format&fit=crop",
-    likes: "6.2k",
-    views: "41.8k",
-    gradient: "from-orange-500/20 to-transparent",
-    icon: Utensils,
-    tags: ["Restaurant", "Menu", "Warm UI"],
-  },
-  {
-    id: 4,
-    title: "Quantum SaaS Landing",
-    category: "SaaS",
-    description:
-      "A modern SaaS landing page with feature grid, pricing tiers, and animated hero section.",
-    image:
-      "https://images.unsplash.com/photo-1551434678-e076c223a692?q=80&w=2370&auto=format&fit=crop",
-    likes: "15.1k",
-    views: "102.5k",
-    gradient: "from-purple-500/20 to-transparent",
-    icon: Layout,
-    tags: ["SaaS", "Landing", "Pricing"],
-  },
-  {
-    id: 5,
-    title: "Aperture Photography",
-    category: "Photography",
-    description:
-      "A full-screen photography portfolio with masonry gallery, lightbox, and minimal design.",
-    image:
-      "https://images.unsplash.com/photo-1542038784456-1ea7d9c8a5c5?q=80&w=2370&auto=format&fit=crop",
-    likes: "9.8k",
-    views: "67.3k",
-    gradient: "from-pink-500/20 to-transparent",
-    icon: Camera,
-    tags: ["Gallery", "Minimal", "Lightbox"],
-  },
-  {
-    id: 6,
-    title: "Pulse News Network",
-    category: "Blog",
-    description:
-      "A modern news platform with categorized feeds, trending sidebar, and reading progress.",
-    image:
-      "https://images.unsplash.com/photo-1504711434969-e33886168f5c?q=80&w=2370&auto=format&fit=crop",
-    likes: "7.5k",
-    views: "48.9k",
-    gradient: "from-emerald-500/20 to-transparent",
-    icon: Newspaper,
-    tags: ["Blog", "News", "Feed"],
-  },
-];
+// Fallback thumbnail used when a deployed site has no extractable image.
+const FALLBACK_THUMBNAIL =
+  "https://images.unsplash.com/photo-1467232004584-a241de8bcf5d?q=80&w=1200&auto=format&fit=crop";
 
-const stats = [
-  { label: "Sites Built", value: "50K+", icon: Layout },
-  { label: "Active Creators", value: "12K+", icon: TrendingUp },
-  { label: "Total Views", value: "2.4M", icon: Eye },
-  { label: "Community Likes", value: "180K", icon: Heart },
-];
+const formatDate = (dateString) => {
+  if (!dateString) return "";
+  try {
+    return new Date(dateString).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+  } catch {
+    return "";
+  }
+};
 
 const Showcase = () => {
+  const dispatch = useDispatch();
+  const { showcase, showcaseLoading, showcaseError } = useSelector(
+    (state) => state.website,
+  );
+
+  useEffect(() => {
+    dispatch(getShowcaseWebsites());
+  }, [dispatch]);
+
   const containerVariants = {
     hidden: { opacity: 0 },
     show: {
@@ -129,6 +62,28 @@ const Showcase = () => {
       transition: { type: "spring", stiffness: 100, damping: 15 },
     },
   };
+
+  // Live stats derived from the real number of deployed projects.
+  const stats = [
+    { label: "Sites Built", value: `${showcase.length}`, icon: Layout },
+    {
+      label: "Live Projects",
+      value: `${showcase.length}`,
+      icon: TrendingUp,
+    },
+    {
+      label: "Creators",
+      value: `${
+        new Set(showcase.map((p) => p.creator?.name).filter(Boolean)).size
+      }`,
+      icon: Eye,
+    },
+    {
+      label: "Deployed",
+      value: `${showcase.length}`,
+      icon: Heart,
+    },
+  ];
 
   return (
     <div className="min-h-screen bg-background text-foreground transition-colors duration-500 overflow-x-clip relative">
@@ -199,81 +154,162 @@ const Showcase = () => {
 
       {/* SHOWCASE GRID */}
       <section className="pb-32 px-6 relative z-10">
-        <motion.div
-          variants={containerVariants}
-          initial="hidden"
-          animate="show"
-          className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
-        >
-          {showcaseProjects.map((project) => (
-            <motion.div
-              key={project.id}
-              variants={itemVariants}
-              whileHover={{ y: -6 }}
-              className="group relative rounded-2xl border border-border/40 bg-muted/10 backdrop-blur-md overflow-hidden flex flex-col transition-all duration-300 hover:bg-muted/20 hover:border-border/80"
+        {/* LOADING STATE */}
+        {showcaseLoading && (
+          <div className="max-w-6xl mx-auto flex flex-col items-center justify-center py-24 gap-4">
+            <Loader2 className="w-8 h-8 text-primary animate-spin" />
+            <p className="text-sm font-bold uppercase tracking-widest text-muted-foreground">
+              Loading showcase...
+            </p>
+          </div>
+        )}
+
+        {/* ERROR STATE */}
+        {!showcaseLoading && showcaseError && (
+          <div className="max-w-6xl mx-auto flex flex-col items-center justify-center py-24 gap-4 text-center">
+            <div className="p-4 rounded-full bg-destructive/10">
+              <AlertCircle className="w-8 h-8 text-destructive" />
+            </div>
+            <p className="text-lg font-bold text-foreground">
+              Failed to load showcase
+            </p>
+            <p className="text-sm text-muted-foreground max-w-md">
+              {showcaseError}
+            </p>
+            <Button
+              variant="outline"
+              onClick={() => dispatch(getShowcaseWebsites())}
+              className="mt-2 gap-2"
             >
-              {/* Preview Image */}
-              <div className="relative h-52 overflow-hidden border-b border-border/20">
-                <img
-                  src={project.image}
-                  alt={project.title}
-                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-background/90 via-background/20 to-transparent" />
+              <Loader2 className="w-4 h-4" />
+              Try Again
+            </Button>
+          </div>
+        )}
 
-                {/* Category Badge */}
-                <div className="absolute top-3 left-3">
-                  <Badge
-                    variant="outline"
-                    className="bg-background/80 backdrop-blur-md border-border/60 text-[10px] font-bold uppercase tracking-wider gap-1"
-                  >
-                    <project.icon className="w-3 h-3 text-primary" />
-                    {project.category}
-                  </Badge>
-                </div>
+        {/* EMPTY STATE */}
+        {!showcaseLoading && !showcaseError && showcase.length === 0 && (
+          <div className="max-w-6xl mx-auto flex flex-col items-center justify-center py-24 gap-4 text-center">
+            <div className="p-4 rounded-full bg-muted/30">
+              <Globe className="w-8 h-8 text-muted-foreground" />
+            </div>
+            <p className="text-lg font-bold text-foreground">No projects yet</p>
+            <p className="text-sm text-muted-foreground max-w-md">
+              Be the first to showcase your work! Generate and deploy a website
+              to see it featured here.
+            </p>
+            <Link to="/generate">
+              <Button className="mt-2 gap-2">
+                <Sparkles className="w-4 h-4" />
+                Create Your Site
+              </Button>
+            </Link>
+          </div>
+        )}
 
-                {/* External Link Icon */}
-                <div className="absolute top-3 right-3 p-2 rounded-lg bg-background/80 backdrop-blur-md border border-border/60 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <ExternalLink className="w-3.5 h-3.5 text-foreground" />
-                </div>
-              </div>
+        {/* PROJECTS GRID */}
+        {!showcaseLoading && !showcaseError && showcase.length > 0 && (
+          <motion.div
+            variants={containerVariants}
+            initial="hidden"
+            animate="show"
+            className="max-w-6xl mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+          >
+            {showcase.map((project) => (
+              <motion.div
+                key={project._id}
+                variants={itemVariants}
+                whileHover={{ y: -6 }}
+                className="group relative rounded-2xl border border-border/40 bg-muted/10 backdrop-blur-md overflow-hidden flex flex-col transition-all duration-300 hover:bg-muted/20 hover:border-border/80"
+              >
+                {/* Preview Image */}
+                <div className="relative h-52 overflow-hidden border-b border-border/20">
+                  <img
+                    src={project.thumbnail || FALLBACK_THUMBNAIL}
+                    alt={project.title}
+                    loading="lazy"
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                    onError={(e) => {
+                      e.target.src = FALLBACK_THUMBNAIL;
+                    }}
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-background/90 via-background/20 to-transparent" />
 
-              {/* Content */}
-              <div className="p-6 flex flex-col flex-1">
-                <h3 className="text-lg font-bold text-foreground mb-2 tracking-tight group-hover:text-primary transition-colors">
-                  {project.title}
-                </h3>
-                <p className="text-sm text-muted-foreground leading-relaxed mb-4 flex-1">
-                  {project.description}
-                </p>
-
-                {/* Tags */}
-                <div className="flex flex-wrap gap-1.5 mb-4">
-                  {project.tags.map((tag) => (
-                    <span
-                      key={tag}
-                      className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md bg-muted/40 text-muted-foreground border border-border/20"
+                  {/* Deployed Badge */}
+                  <div className="absolute top-3 left-3">
+                    <Badge
+                      variant="outline"
+                      className="bg-background/80 backdrop-blur-md border-border/60 text-[10px] font-bold uppercase tracking-wider gap-1"
                     >
-                      {tag}
-                    </span>
-                  ))}
+                      <Globe className="w-3 h-3 text-primary" />
+                      Live
+                    </Badge>
+                  </div>
+
+                  {/* External Link Icon */}
+                  <div className="absolute top-3 right-3 p-2 rounded-lg bg-background/80 backdrop-blur-md border border-border/60 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <ExternalLink className="w-3.5 h-3.5 text-foreground" />
+                  </div>
                 </div>
 
-                {/* Stats Footer */}
-                <div className="pt-4 border-t border-border/10 flex items-center justify-between text-[11px] font-bold text-muted-foreground">
-                  <span className="flex items-center gap-1.5">
-                    <Heart className="w-3 h-3 text-pink-500 fill-pink-500/20" />
-                    {project.likes}
-                  </span>
-                  <span className="flex items-center gap-1.5">
-                    <Eye className="w-3 h-3 text-blue-500" />
-                    {project.views}
-                  </span>
+                {/* Content */}
+                <div className="p-6 flex flex-col flex-1">
+                  <h3 className="text-lg font-bold text-foreground mb-2 tracking-tight group-hover:text-primary transition-colors line-clamp-1">
+                    {project.title}
+                  </h3>
+
+                  {/* Creator Info */}
+                  {project.creator && (
+                    <div className="flex items-center gap-2 mb-3">
+                      <img
+                        src={project.creator.avatar}
+                        alt={project.creator.name}
+                        className="w-5 h-5 rounded-full object-cover border border-border/40"
+                        onError={(e) => {
+                          e.target.src =
+                            "https://cdn-icons-png.flaticon.com/512/149/149071.png";
+                        }}
+                      />
+                      <span className="text-xs font-semibold text-muted-foreground">
+                        {project.creator.name}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Tags */}
+                  <div className="flex flex-wrap gap-1.5 mb-4">
+                    <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md bg-muted/40 text-muted-foreground border border-border/20 flex items-center gap-1">
+                      <Calendar className="w-2.5 h-2.5" />
+                      {formatDate(project.createdAt)}
+                    </span>
+                  </div>
+
+                  {/* Footer */}
+                  <div className="pt-4 border-t border-border/10 flex items-center justify-between mt-auto">
+                    <Link
+                      to={`/live-site/${project._id}`}
+                      className="text-xs font-bold text-primary hover:underline flex items-center gap-1.5"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      View Site
+                    </Link>
+                    {project.deployedUrl && (
+                      <a
+                        href={project.deployedUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs font-bold text-muted-foreground hover:text-foreground flex items-center gap-1.5 transition-colors"
+                      >
+                        <ExternalLink className="w-3.5 h-3.5" />
+                        Open
+                      </a>
+                    )}
+                  </div>
                 </div>
-              </div>
-            </motion.div>
-          ))}
-        </motion.div>
+              </motion.div>
+            ))}
+          </motion.div>
+        )}
       </section>
 
       {/* CTA SECTION */}

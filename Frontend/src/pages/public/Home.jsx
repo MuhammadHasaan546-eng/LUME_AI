@@ -14,6 +14,7 @@ import {
   MousePointer2,
   Wand2,
 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 const Home = () => {
   // --- Typewriter Effect Logic ---
@@ -70,6 +71,7 @@ const Home = () => {
     hidden: { y: 20, opacity: 0 },
     visible: { y: 0, opacity: 1 },
   };
+  const navigate = useNavigate();
 
   return (
     <div className="flex flex-col min-h-screen overflow-hidden bg-background">
@@ -250,6 +252,7 @@ const Home = () => {
               Ready to build the future?
             </h2>
             <Button
+              onClick={() => navigate("/generate")}
               size="lg"
               variant="secondary"
               className="relative h-16 px-12 text-xl font-black rounded-2xl hover:scale-105 transition-transform shadow-xl"
