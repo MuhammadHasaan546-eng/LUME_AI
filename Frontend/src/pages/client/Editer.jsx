@@ -36,6 +36,7 @@ import Editor from "@monaco-editor/react";
 import { deployWebsite, getWebsiteById, updateWebsite } from "@/api/website";
 import { setThemePreference } from "@/store/theme";
 import useWebContainer from "@/hooks/useWebContainer";
+import { defaultHtmlTemplate } from "@/templates/defaultTemplate";
 
 const EditorPage = () => {
   const navigate = useNavigate();
@@ -51,9 +52,7 @@ const EditorPage = () => {
     "bg-card border-border text-muted-foreground hover:border-primary/30 hover:text-foreground";
 
   // Core Data States
-  const [code, setCode] = useState(
-    latestCode || "<!-- Write or generate your layout here -->",
-  );
+  const [code, setCode] = useState(latestCode || defaultHtmlTemplate);
   const [prompt, setPrompt] = useState("");
   const [previewMode, setPreviewMode] = useState("desktop"); // desktop, tablet, mobile
   const [copied, setCopied] = useState(false);
