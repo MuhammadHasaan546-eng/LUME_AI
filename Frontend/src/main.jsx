@@ -6,13 +6,21 @@ import { Provider } from "react-redux";
 import store from "./store/store";
 
 import { Toaster } from "./components/ui/sonner";
-import { AppRouter } from "./routes/AppRouter";
+import App from "./App";
+import ThemeStoreSync from "./components/home/ThemeStoreSync";
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>
     <Provider store={store}>
-      <ThemeProvider attribute="class" defaultTheme="dark">
-        <AppRouter />
+      <ThemeProvider
+        attribute="class"
+        defaultTheme="system"
+        storageKey="lume-theme"
+        enableSystem
+        disableTransitionOnChange
+      >
+        <ThemeStoreSync />
+        <App />
         <Toaster />
       </ThemeProvider>
     </Provider>

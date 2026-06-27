@@ -1,5 +1,6 @@
 import React from "react";
 import { motion } from "framer-motion"; // Agar error de toh "motion/react" use karein
+import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Sparkles, Globe, MessageCircle, Briefcase, Mail } from "lucide-react";
@@ -8,24 +9,39 @@ const Footer = () => {
   const currentYear = new Date().getFullYear();
 
   const socialLinks = [
-    { icon: Globe, href: "#" },
-    { icon: MessageCircle, href: "#" },
-    { icon: Briefcase, href: "#" },
-    { icon: Mail, href: "#" },
+    { icon: Globe, to: "/" },
+    { icon: MessageCircle, to: "/" },
+    { icon: Briefcase, to: "/" },
+    { icon: Mail, to: "/" },
   ];
 
   const footerLinks = [
     {
       title: "Product",
-      links: ["Features", "Showcase", "Pricing", "Releases"],
+      links: [
+        { name: "Features", to: "/features" },
+        { name: "Showcase", to: "/showcase" },
+        { name: "Pricing", to: "/pricing" },
+        { name: "Releases", to: "/" },
+      ],
     },
     {
       title: "Company",
-      links: ["About", "Careers", "Contact", "Privacy"],
+      links: [
+        { name: "About", to: "/" },
+        { name: "Careers", to: "/" },
+        { name: "Contact", to: "/" },
+        { name: "Privacy", to: "/" },
+      ],
     },
     {
       title: "Resources",
-      links: ["Documentation", "Help Center", "Community", "API Reference"],
+      links: [
+        { name: "Documentation", to: "/docs" },
+        { name: "Help Center", to: "/" },
+        { name: "Community", to: "/" },
+        { name: "API Reference", to: "/" },
+      ],
     },
   ];
 
@@ -84,13 +100,12 @@ const Footer = () => {
                   whileHover={{ y: -3 }}
                   whileTap={{ scale: 0.9 }}
                 >
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-9 w-9 rounded-full hover:bg-primary/10 hover:text-primary transition-all border border-primary/5"
+                  <Link
+                    to={social.to}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-full hover:bg-primary/10 hover:text-primary transition-all border border-primary/5"
                   >
                     <social.icon className="h-4 w-4" />
-                  </Button>
+                  </Link>
                 </motion.div>
               ))}
             </div>
@@ -108,14 +123,15 @@ const Footer = () => {
               </h4>
               <ul className="space-y-2">
                 {section.links.map((link) => (
-                  <li key={link}>
-                    <motion.a
-                      href="#"
-                      whileHover={{ x: 5 }}
-                      className="inline-block text-sm text-muted-foreground hover:text-primary transition-colors"
-                    >
-                      {link}
-                    </motion.a>
+                  <li key={link.name}>
+                    <motion.div whileHover={{ x: 5 }}>
+                      <Link
+                        to={link.to}
+                        className="inline-block text-sm text-muted-foreground hover:text-primary transition-colors"
+                      >
+                        {link.name}
+                      </Link>
+                    </motion.div>
                   </li>
                 ))}
               </ul>
@@ -152,15 +168,15 @@ const Footer = () => {
         >
           <p>© {currentYear} Lume AI Inc. All rights reserved.</p>
           <div className="flex gap-6">
-            <a href="#" className="hover:text-primary transition-colors">
+            <Link to="/" className="hover:text-primary transition-colors">
               Terms of Service
-            </a>
-            <a href="#" className="hover:text-primary transition-colors">
+            </Link>
+            <Link to="/" className="hover:text-primary transition-colors">
               Privacy Policy
-            </a>
-            <a href="#" className="hover:text-primary transition-colors">
+            </Link>
+            <Link to="/" className="hover:text-primary transition-colors">
               Cookies
-            </a>
+            </Link>
           </div>
         </motion.div>
       </motion.div>

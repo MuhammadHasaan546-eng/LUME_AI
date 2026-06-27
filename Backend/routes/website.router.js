@@ -1,11 +1,15 @@
 import express from "express";
 import IsAuth from "../middleware/isAuth.js";
+import validate from "../middleware/validate.js";
 import {
   generateWebSite,
   updateWebsite,
   getUserWebsites,
   getWebsiteById,
+  getLiveWebsite,
+  getShowcaseWebsites,
   deleteWebsite,
+  deployWebsite,
 } from "../controllers/website.controller.js";
 import {
   generateWebsiteValidation,
@@ -16,39 +20,26 @@ const router = express.Router();
 
 // ── Website generation & management ──
 router.post(
-  "/gen",
+  "/generate-website",
   IsAuth,
-  (req, res, next) => {
-    const { error } = generateWebsiteValidation.validate(req.body, {
-      abortEarly: false,
-    });
-    if (error) {
-      const messages = error.details.map((d) => d.message).join(", ");
-      return res.status(400).json({ message: messages });
-    }
-    next();
-  },
+  validate(generateWebsiteValidation),
   generateWebSite,
 );
 
 router.put(
-  "/website",
+  "/website-update",
   IsAuth,
-  (req, res, next) => {
-    const { error } = updateWebsiteValidation.validate(req.body, {
-      abortEarly: false,
-    });
-    if (error) {
-      const messages = error.details.map((d) => d.message).join(", ");
-      return res.status(400).json({ message: messages });
-    }
-    next();
-  },
+  validate(updateWebsiteValidation),
   updateWebsite,
 );
 
+// PUBLIC — showcase gallery of all deployed websites (no auth required)
+router.get("/showcase", getShowcaseWebsites);
+
 router.get("/websites", IsAuth, getUserWebsites);
 router.get("/website/:websiteId", IsAuth, getWebsiteById);
+router.get("/live-site/:websiteId", getLiveWebsite);
 router.delete("/website/:websiteId", IsAuth, deleteWebsite);
+router.post("/website/:websiteId/deploy", IsAuth, deployWebsite);
 
 export default router;

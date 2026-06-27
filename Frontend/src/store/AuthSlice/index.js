@@ -46,7 +46,6 @@ const authSlice = createSlice({
         state.user = action.payload.data.user;
         state.token = action.payload.data.token;
         state.isAuthenticated = true;
-        console.log("User data fetched:", action.payload);
       })
       .addCase(getCurrentUser.rejected, (state) => {
         state.isLoading = false;

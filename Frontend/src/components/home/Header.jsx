@@ -1,7 +1,7 @@
 import React from "react";
 import { motion } from "framer-motion";
 import { useSelector, useDispatch } from "react-redux";
-// import { logout } from "@/store/authSlice"; // Apne slice ke mutabiq uncomment karein
+import { Link, useNavigate } from "react-router-dom";
 
 // UI Components
 import { Button } from "@/components/ui/button";
@@ -42,14 +42,16 @@ import { logout } from "@/api/auth";
 import { toast } from "sonner";
 
 const navItems = [
-  { name: "Features", href: "#" },
-  { name: "Showcase", href: "#" },
-  { name: "Pricing", href: "#" },
-  { name: "Docs", href: "#" },
+  { name: "Home", to: "/" },
+  { name: "Features", to: "/features" },
+  { name: "Showcase", to: "/showcase" },
+  { name: "Pricing", to: "/pricing" },
+  { name: "Docs", to: "/docs" },
 ];
 
 const Header = () => {
   const dispatch = useDispatch();
+  const navigate = useNavigate();
 
   // Redux state
   const userData = useSelector((state) => state.auth.user);
@@ -86,25 +88,30 @@ const Header = () => {
           <div className="bg-primary p-1.5 rounded-lg shadow-[0_0_20px_rgba(var(--primary),0.3)]">
             <Sparkles className="h-4 w-4 text-primary-foreground" />
           </div>
-          <span className="text-xl font-bold tracking-tighter">
-            LUME<span className="text-primary">.AI</span>
-          </span>
+          <Link to={"/"}>
+            <span className="text-xl font-bold tracking-tighter">
+              LUME<span className="text-primary">.AI</span>
+            </span>
+          </Link>
         </motion.div>
 
         {/* Desktop Navigation */}
         <nav className="hidden md:flex items-center gap-8 text-sm font-medium">
           {navItems.map((item, index) => (
-            <motion.a
+            <motion.div
               key={item.name}
-              href={item.href}
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: index * 0.1 + 0.2 }}
-              className="text-muted-foreground transition-colors hover:text-primary relative group"
             >
-              {item.name}
-              <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-primary transition-all group-hover:w-full" />
-            </motion.a>
+              <Link
+                to={item.to}
+                className="text-muted-foreground transition-colors hover:text-primary relative group inline-block"
+              >
+                {item.name}
+                <span className="absolute -bottom-1 left-0 w-0 h-0.5 bg-primary transition-all group-hover:w-full" />
+              </Link>
+            </motion.div>
           ))}
         </nav>
 
@@ -127,7 +134,11 @@ const Header = () => {
               </>
             ) : (
               <div className="flex items-center gap-4">
-                <Button variant="ghost" className="gap-2 text-sm font-medium">
+                <Button
+                  variant="ghost"
+                  className="gap-2 text-sm font-medium"
+                  onClick={() => navigate("/dashboard")}
+                >
                   <LayoutDashboard className="h-4 w-4" /> Dashboard
                 </Button>
 
@@ -230,20 +241,23 @@ const Header = () => {
                       <div className="bg-primary/10 p-1 rounded-md">
                         <Sparkles className="h-4 w-4 text-primary" />
                       </div>
-                      LUME<span className="text-primary">.AI</span>
+
+                      <Link to={"/"}>
+                        LUME<span className="text-primary">.AI</span>
+                      </Link>
                     </SheetTitle>
                   </SheetHeader>
 
                   {/* Navigation Links */}
                   <nav className="flex flex-col gap-4">
                     {navItems.map((item) => (
-                      <a
+                      <Link
                         key={item.name}
-                        href={item.href}
+                        to={item.to}
                         className="text-base font-medium tracking-tight text-muted-foreground hover:text-primary transition-colors py-1.5 px-1 rounded-lg hover:bg-primary/5 transition-all"
                       >
                         {item.name}
-                      </a>
+                      </Link>
                     ))}
                   </nav>
                 </div>

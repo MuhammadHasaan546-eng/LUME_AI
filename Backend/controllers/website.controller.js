@@ -1,4 +1,6 @@
-import generateAIResponse from "../config/openRouter.js";
+import generateAIResponse, {
+  parseAIWebsiteResponse,
+} from "../config/openRouter.js";
 import ExpressError from "../utils/ExpressError.js";
 import ApiResponse from "../utils/ApiResponse.js";
 import wrapAsync from "../utils/wrapAsync.js";
@@ -7,6 +9,16 @@ import User from "../models/User.models.js";
 
 const GENERATE_COST = 50;
 const UPDATE_COST = 25;
+
+function mapAIServiceError(error) {
+  const message = error?.message || "AI generation failed. Please try again.";
+
+  if (/user not found|invalid api key|unauthorized|forbidden/i.test(message)) {
+    return new ExpressError(`OpenRouter error: ${message}`, 502);
+  }
+
+  return new ExpressError(message, 502);
+}
 
 // export const generateDemo = async (req, res) => {
 //   try {
@@ -189,20 +201,65 @@ export const generateWebSite = wrapAsync(async (req, res) => {
 
   const finalPrompt = masterPrompt.replace("{USER_PROMPT}", prompt);
 
-  const aiResponse = await generateAIResponse(finalPrompt);
-  if (!aiResponse) {
-    throw new ExpressError("AI response not found", 404);
-  }
-  let parsedResponse = aiResponse;
+  let aiResponse;
   try {
-    // Some models wrap JSON in markdown blocks, so clean it up before parsing
-    const cleanJsonString = aiResponse
-      .replace(/```json/gi, "")
-      .replace(/```/g, "")
-      .trim();
-    parsedResponse = JSON.parse(cleanJsonString);
-    console.log(parsedResponse);
+    aiResponse = await generateAIResponse(finalPrompt);
+  } catch (error) {
+    throw mapAIServiceError(error);
+  }
 
+  if (!aiResponse) {
+    throw new ExpressError("AI generation failed. Please try again.", 502);
+  }
+
+  let parsedResponse = { message: "Website generated successfully", code: "" };
+
+  try {
+    // 1. Pehle normal parsing try karein
+    parsedResponse = parseAIWebsiteResponse(aiResponse);
+  } catch (e) {
+    console.warn(
+      "Standard parsing failed, applying robust regex cleanup...",
+      e,
+    );
+
+    // 2. FALLBACK SAFETAEY: Agar standard parse fail ho jaye, toh raw text se HTML nikalein
+    let cleanText = aiResponse.trim();
+
+    // Markdown syntax saaf karein (```json ... ``` ya ```html ... ```)
+    if (cleanText.startsWith("```")) {
+      cleanText = cleanText
+        .replace(/^```[a-zA-Z]*\n/, "")
+        .replace(/\n```$/, "")
+        .trim();
+    }
+
+    // Agar pure JSON text ke andar object form mein code aaya hai
+    if (cleanText.includes('"code":') || cleanText.includes("'code':")) {
+      try {
+        const directJson = JSON.parse(cleanText);
+        parsedResponse.code = directJson.code;
+        if (directJson.message) parsedResponse.message = directJson.message;
+      } catch (innerError) {
+        // Agar JSON parse ab bhi fail ho, toh direct string ko hi code maan lein
+        parsedResponse.code = cleanText;
+      }
+    } else {
+      // Agar AI ne bina JSON format ke direct code bhej diya hai
+      parsedResponse.code = cleanText;
+    }
+  }
+
+  // Double check ke code empty na ho
+  if (!parsedResponse.code || parsedResponse.code.trim() === "") {
+    throw new ExpressError(
+      "AI response was empty or invalid. Please try again.",
+      502,
+    );
+  }
+
+  try {
+    // Unique slug generator
     const slug =
       parsedResponse.message
         .slice(0, 60)
@@ -212,9 +269,10 @@ export const generateWebSite = wrapAsync(async (req, res) => {
       "-" +
       Date.now().toString(36);
 
-    await Website.create({
+    // Database mein website entry create karein
+    const website = await Website.create({
       user: req.user.id,
-      title: parsedResponse.message,
+      title: parsedResponse.message.slice(0, 100), // Safety check string length
       slug,
       latestCode: parsedResponse.code,
       conversations: [
@@ -229,29 +287,40 @@ export const generateWebSite = wrapAsync(async (req, res) => {
       ],
     });
 
+    // Credits minus aur save karein
     user.credits -= GENERATE_COST;
     await user.save();
-  } catch (e) {
-    console.warn("Failed to parse AI response as JSON", e);
-  }
 
-  return res.status(200).json(
-    new ApiResponse(
-      200,
-      {
-        websiteId: Website._id,
-        latestCode: Website.latestCode,
-        title: Website.title,
-        createdAt: Website.createdAt,
-        credits: user.credits,
-      },
-      "Website generated successfully",
-    ),
-  );
+    // Clean JSON Object response bhejain frontend ko
+    return res.status(200).json(
+      new ApiResponse(
+        200,
+        {
+          websiteId: website._id,
+          latestCode: website.latestCode, // Yeh ab bilkul saaf HTML/Code string hogi
+          title: website.title,
+          conversations: website.conversations,
+          createdAt: website.createdAt,
+          credits: user.credits,
+        },
+        "Website generated successfully",
+      ),
+    );
+  } catch (error) {
+    console.error("Database or final compilation error:", error);
+    throw new ExpressError(
+      "Failed to save generated website context. Please try again.",
+      500,
+    );
+  }
 });
 
 export const updateWebsite = wrapAsync(async (req, res) => {
   const { websiteId, prompt } = req.body;
+
+  if (!websiteId || !prompt) {
+    throw new ExpressError("Website ID and prompt are required", 400);
+  }
 
   const user = await User.findById(req.user.id);
   if (!user) {
@@ -276,39 +345,103 @@ export const updateWebsite = wrapAsync(async (req, res) => {
 
   const finalPrompt = masterPrompt.replace("{USER_PROMPT}", prompt);
 
-  const aiResponse = await generateAIResponse(finalPrompt);
-  if (!aiResponse) {
-    throw new ExpressError("AI response not found", 404);
+  let aiResponse;
+  try {
+    aiResponse = await generateAIResponse(finalPrompt);
+  } catch (error) {
+    throw mapAIServiceError(error);
   }
 
-  let parsedResponse = aiResponse;
-  try {
-    const cleanJsonString = aiResponse
-      .replace(/```json/gi, "")
-      .replace(/```/g, "")
-      .trim();
-    parsedResponse = JSON.parse(cleanJsonString);
+  if (!aiResponse) {
+    throw new ExpressError("AI generation failed. Please try again.", 502);
+  }
 
-    website.title = parsedResponse.message;
-    website.latestCode = parsedResponse.code;
+  // Fallback parsing object initialize karein
+  let parsedResponse = { message: "Website updated successfully", code: "" };
+
+  try {
+    // 1. Pehle standard JSON parsing check karein
+    parsedResponse = parseAIWebsiteResponse(aiResponse);
+  } catch (e) {
+    console.warn(
+      "Standard parsing failed on update, applying robust cleanup...",
+      e,
+    );
+
+    // 2. FALLBACK LAYER: Markdown aur raw strings saaf karein
+    let cleanText = aiResponse.trim();
+
+    if (cleanText.startsWith("```")) {
+      cleanText = cleanText
+        .replace(/^```[a-zA-Z]*\n/, "")
+        .replace(/\n```$/, "")
+        .trim();
+    }
+
+    // Agar direct code key mojood hai text mein
+    if (cleanText.includes('"code":') || cleanText.includes("'code':")) {
+      try {
+        const directJson = JSON.parse(cleanText);
+        parsedResponse.code = directJson.code;
+        if (directJson.message) parsedResponse.message = directJson.message;
+      } catch (innerError) {
+        parsedResponse.code = cleanText;
+      }
+    } else {
+      // Agar direct code/HTML string bhej di hai AI ne
+      parsedResponse.code = cleanText;
+    }
+  }
+
+  // Safety Check: Code khali nahi hona chahiye
+  if (!parsedResponse.code || parsedResponse.code.trim() === "") {
+    throw new ExpressError(
+      "AI updated code was empty or invalid. Please try again.",
+      502,
+    );
+  }
+
+  try {
+    // Website document update karein
+    website.title = parsedResponse.message.slice(0, 100);
+    website.latestCode = parsedResponse.code; // Yeh ab guaranteed clean code/HTML hoga
+
     website.conversations.push(
       { role: "user", content: prompt },
       { role: "ai", content: parsedResponse.message },
     );
     await website.save();
 
+    // User credits deduct karein
     user.credits -= UPDATE_COST;
     await user.save();
-  } catch (e) {
-    console.warn("Failed to parse AI response as JSON", e);
+
+    // Sahi clean object frontend ko return karein
+    return res.status(200).json(
+      new ApiResponse(
+        200,
+        {
+          websiteId: website._id,
+          title: website.title,
+          latestCode: website.latestCode,
+          conversations: website.conversations,
+          updatedAt: website.updatedAt,
+          credits: user.credits,
+        },
+        "Website updated successfully",
+      ),
+    );
+  } catch (error) {
+    console.error("Database saving error during update:", error);
+    throw new ExpressError(
+      "Failed to save website changes. Please try again.",
+      500,
+    );
   }
-
-  return res.status(200).json(new ApiResponse(200, parsedResponse));
 });
-
 export const getUserWebsites = wrapAsync(async (req, res) => {
   const websites = await Website.find({ user: req.user.id })
-    .select("title slug deployed deployedUrl createdAt updatedAt")
+    .select("title slug latestCode deployed deployedUrl createdAt updatedAt")
     .sort({ createdAt: -1 });
 
   return res.status(200).json(new ApiResponse(200, websites));
@@ -324,6 +457,72 @@ export const getWebsiteById = wrapAsync(async (req, res) => {
 
   if (website.user.toString() !== req.user.id.toString()) {
     throw new ExpressError("Unauthorized", 403);
+  }
+
+  return res.status(200).json(new ApiResponse(200, website));
+});
+
+// Extract the first <img src="..."> URL from an HTML string.
+// Used to generate a lightweight thumbnail for the public showcase
+// without sending the full (heavy) latestCode to the frontend.
+function extractThumbnailFromCode(html = "") {
+  if (!html) return "";
+
+  // Match the first <img ... src="..." ...> occurrence (single/double quotes)
+  const imgMatch = html.match(/<img[^>]*\ssrc=["']([^"']+)["']/i);
+  if (imgMatch && imgMatch[1]) {
+    return imgMatch[1];
+  }
+
+  // Fallback: try to find an OpenGraph og:image meta tag
+  const ogMatch = html.match(
+    /<meta[^>]+property=["']og:image["'][^>]*content=["']([^"']+)["']/i,
+  );
+  if (ogMatch && ogMatch[1]) {
+    return ogMatch[1];
+  }
+
+  return "";
+}
+
+// PUBLIC endpoint — returns all deployed websites for the showcase gallery.
+// No authentication required. Only lightweight metadata is returned
+// (title, slug, deployedUrl, thumbnail, createdAt + creator name/avatar).
+export const getShowcaseWebsites = wrapAsync(async (req, res) => {
+  const websites = await Website.find({ deployed: true })
+    .populate("user", "name avatar")
+    .select("title slug deployedUrl latestCode createdAt user")
+    .sort({ createdAt: -1 });
+
+  // Map to a lightweight payload — strip the heavy latestCode and
+  // expose only a thumbnail image URL extracted from the HTML.
+  const showcase = websites.map((w) => ({
+    _id: w._id,
+    title: w.title,
+    slug: w.slug,
+    deployedUrl: w.deployedUrl,
+    thumbnail: extractThumbnailFromCode(w.latestCode),
+    createdAt: w.createdAt,
+    creator: w.user ? { name: w.user.name, avatar: w.user.avatar } : null,
+  }));
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, showcase, "Showcase websites fetched"));
+});
+
+export const getLiveWebsite = wrapAsync(async (req, res) => {
+  const { websiteId } = req.params;
+
+  const website = await Website.findById(websiteId).select(
+    "title latestCode deployed deployedUrl slug updatedAt",
+  );
+  if (!website) {
+    throw new ExpressError("Website not found", 404);
+  }
+
+  if (!website.deployed) {
+    throw new ExpressError("Website is not deployed yet", 404);
   }
 
   return res.status(200).json(new ApiResponse(200, website));
@@ -346,4 +545,55 @@ export const deleteWebsite = wrapAsync(async (req, res) => {
   return res
     .status(200)
     .json(new ApiResponse(200, null, "Website deleted successfully"));
+});
+
+export const deployWebsite = wrapAsync(async (req, res) => {
+  const { websiteId } = req.params;
+  const { code } = req.body || {};
+
+  const website = await Website.findById(websiteId);
+  if (!website) {
+    throw new ExpressError("Website not found", 404);
+  }
+
+  if (website.user.toString() !== req.user.id.toString()) {
+    throw new ExpressError("Unauthorized", 403);
+  }
+
+  if (typeof code === "string" && code.trim()) {
+    website.latestCode = code;
+  }
+
+  if (!website.slug) {
+    website.slug =
+      website.title
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-|-$/g, "") +
+      "-" +
+      websiteId +
+      Date.now();
+  }
+
+  const hostingBaseUrl =
+    process.env.HOSTING_BASE_URL || "http://localhost:5173";
+
+  website.deployed = true;
+  website.deployedUrl = `${hostingBaseUrl}/live-site/${website._id}`;
+  await website.save();
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        websiteId: website._id,
+        title: website.title,
+        latestCode: website.latestCode,
+        deployed: website.deployed,
+        deployedUrl: website.deployedUrl,
+        updatedAt: website.updatedAt,
+      },
+      "Website deployed successfully",
+    ),
+  );
 });

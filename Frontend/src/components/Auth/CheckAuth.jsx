@@ -1,27 +1,54 @@
-import React from "react";
+import React, { useEffect } from "react";
 import LoginModal from "./LoginModal";
 import { useSelector } from "react-redux";
 import { useNavigate } from "react-router";
+import LumeMotionLoader from "@/routes/pageLoader";
 
-export const CheckAuth = ({ children }) => {
+/**
+ * Auth guard component.
+ *
+ * @param {React.ReactNode} children - The protected page content.
+ * @param {boolean} requireAuth - If true, the route requires authentication
+ *   (e.g. /dashboard, /generate, /editor). If false, the route is public-only
+ *   (e.g. /login) and authenticated users are redirected away.
+ */
+export const CheckAuth = ({ children, requireAuth = true }) => {
   const navigate = useNavigate();
-  const { isLoading, isAuthenticated, user } = useSelector(
-    (state) => state.auth,
-  );
+  const { isLoading, isAuthenticated } = useSelector((state) => state.auth);
 
-  // if (isLoading) {
-  //   return (
-  //     <div className="flex items-center justify-center h-screen">
-  //       <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-500"></div>
-  //     </div>
-  //   );
-  // }
+  // Redirect authenticated users away from public-only routes (e.g. /login).
+  // Redirect unauthenticated users away from protected routes.
+  // IMPORTANT: navigation must happen inside useEffect, never during render.
+  useEffect(() => {
+    if (isLoading) return;
 
-  if (!isAuthenticated) {
-    return <LoginModal />;
+    if (requireAuth && !isAuthenticated) {
+      // Protected route + not logged in — let the LoginModal render below.
+      return;
+    }
+
+    if (!requireAuth && isAuthenticated) {
+      // Public-only route (e.g. /login) but user is logged in — send to dashboard.
+      navigate("/dashboard", { replace: true });
+    }
+  }, [isLoading, isAuthenticated, requireAuth, navigate]);
+
+  if (isLoading) {
+    return <LumeMotionLoader isLoading={isLoading} />;
   }
-  if (isAuthenticated) {
-    navigate("/dashboard");
+
+  // Protected route: show login modal when not authenticated, otherwise children.
+  if (requireAuth) {
+    if (!isAuthenticated) {
+      return <LoginModal />;
+    }
     return children;
   }
+
+  // Public-only route (e.g. /login): show children when not authenticated.
+  // (Authenticated users are redirected via the effect above; show loader meanwhile.)
+  if (isAuthenticated) {
+    return <LumeMotionLoader isLoading={true} />;
+  }
+  return children;
 };
