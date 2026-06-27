@@ -5,6 +5,7 @@ import AuthRouter from "./routes/auth.router.js";
 import UserRouter from "./routes/user.router.js";
 import WebsiteRouter from "./routes/website.router.js";
 import BillingRouter from "./routes/billing.router.js";
+import AgentRouter from "./routes/agent.router.js";
 import { stripeWebhook } from "./controllers/billing.controller.js";
 import cookieParser from "cookie-parser";
 import cors from "cors";
@@ -47,6 +48,7 @@ app.use("/api/auth", AuthRouter);
 app.use("/api/user", UserRouter);
 app.use("/api/website", WebsiteRouter);
 app.use("/api/billing", BillingRouter);
+app.use("/api/agent", AgentRouter);
 
 app.use((err, req, res, next) => {
   const { message = "Something went wrong ", statusCode = 500 } = err;
