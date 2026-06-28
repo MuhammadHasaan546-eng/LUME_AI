@@ -227,6 +227,7 @@ const Showcase = () => {
                   <img
                     src={project.thumbnail || FALLBACK_THUMBNAIL}
                     alt={project.title}
+                    crossOrigin="anonymous"
                     loading="lazy"
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                     onError={(e) => {
@@ -264,6 +265,7 @@ const Showcase = () => {
                       <img
                         src={project.creator.avatar}
                         alt={project.creator.name}
+                        crossOrigin="anonymous"
                         className="w-5 h-5 rounded-full object-cover border border-border/40"
                         onError={(e) => {
                           e.target.src =

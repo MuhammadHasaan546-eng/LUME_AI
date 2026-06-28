@@ -60,6 +60,7 @@ const MarqueeCard = ({ name, role, avatar, text, rating }) => (
         <img
           src={avatar}
           alt={name}
+          crossOrigin="anonymous"
           loading="lazy"
           className="h-10 w-10 rounded-full object-cover ring-2 ring-primary/10 group-hover/card:ring-primary/40 transition-all"
         />
@@ -226,6 +227,7 @@ const TestimonialSlider = () => {
                   <img
                     src={active.avatar}
                     alt={active.name}
+                    crossOrigin="anonymous"
                     className="h-12 w-12 rounded-full object-cover ring-2 ring-primary/20"
                   />
                   <div>

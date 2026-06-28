@@ -209,6 +209,7 @@ const Home = () => {
               <img
                 src="https://images.unsplash.com/photo-1460925895917-afdab827c52f?q=80&w=2426&auto=format&fit=crop"
                 alt="AI Preview"
+                crossOrigin="anonymous"
                 className="w-full opacity-80 group-hover:opacity-100 transition-opacity duration-500"
               />
             </div>
