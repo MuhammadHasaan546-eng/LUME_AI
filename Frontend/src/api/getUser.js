@@ -7,9 +7,12 @@ export const getCurrentUser = createAsyncThunk(
   "auth/getCurrentUser",
   async (_, thunkAPI) => {
     try {
+      const token = localStorage.getItem("token");
       const res = await axios.get(`${BASE_URL}/api/user/me`, {
         headers: {
           "Content-Type": "application/json",
+          // Agar cookie fail ho, to header se token mil jaye
+          ...(token && { Authorization: `Bearer ${token}` }),
         },
         withCredentials: true,
       });
@@ -19,7 +22,6 @@ export const getCurrentUser = createAsyncThunk(
         error?.response?.data?.message ||
         error?.message ||
         "Failed to fetch user.";
-      console.error("Get Current User Error:", message);
       return thunkAPI.rejectWithValue(message);
     }
   },

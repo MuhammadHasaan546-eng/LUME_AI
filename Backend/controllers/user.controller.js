@@ -8,6 +8,9 @@ export const getCurrentUser = wrapAsync(async (req, res) => {
     throw new ExpressError("Unauthorized", 401);
   }
   const user = await User.findById(req.user.id);
+  if (!user) {
+    throw new ExpressError("Unauthorized", 401);
+  }
   res
     .status(200)
     .json(new ApiResponse(200, { user }, "User fetched successfully"));

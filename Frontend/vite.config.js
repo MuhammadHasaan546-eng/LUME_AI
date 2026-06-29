@@ -20,16 +20,16 @@ export default defineConfig({
   },
   server: {
     // WebContainer API requires cross-origin isolation (SharedArrayBuffer).
-    // These headers enable COOP/COEP so the browser grants crossOriginIsolated.
+    // Modified to allow popups so Firebase Google Auth works seamlessly.
     headers: {
-      "Cross-Origin-Opener-Policy": "same-origin",
-      "Cross-Origin-Embedder-Policy": "require-corp",
+      "Cross-Origin-Opener-Policy": "same-origin-allow-popups", // 🔴 CHANGE HERE
+      "Cross-Origin-Embedder-Policy": "credentialless", // 🔴 CHANGE HERE (Safe for external images like Google avatar/ui-avatars)
     },
   },
   preview: {
     headers: {
-      "Cross-Origin-Opener-Policy": "same-origin",
-      "Cross-Origin-Embedder-Policy": "require-corp",
+      "Cross-Origin-Opener-Policy": "same-origin-allow-popups", // 🔴 CHANGE HERE
+      "Cross-Origin-Embedder-Policy": "credentialless", // 🔴 CHANGE HERE
     },
   },
 });

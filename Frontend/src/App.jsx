@@ -267,6 +267,15 @@ const App = () => {
 
   const handleEnter = () => setShowIntro(false);
 
+  // Process Firebase redirect result on every page load.
+  // When Google sign-in completes, Firebase redirects back here.
+  // handleRedirectResult() reads the credential and logs the user in.
+  useEffect(() => {
+    import("./utils/handleRedirectResult").then(({ handleRedirectResult }) => {
+      handleRedirectResult().catch(console.error);
+    });
+  }, []);
+
   // Safety fallback: ensure intro dismisses even if boot loop stalls
   useEffect(() => {
     if (!showIntro) return;

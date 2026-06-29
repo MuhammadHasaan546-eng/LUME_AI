@@ -1,4 +1,4 @@
-import React, { useState } from "react"; // useState import kiya
+import React, { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import {
   Dialog,
@@ -11,47 +11,50 @@ import {
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Sparkles } from "lucide-react";
-import { signInWithPopup } from "firebase/auth";
+import {
+  signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
+} from "firebase/auth";
 import { auth, provider } from "@/config/firebase";
-import { useDispatch } from "react-redux";
 import { Link } from "react-router-dom";
-import { login } from "@/api/auth";
 import { toast } from "sonner";
+import { useDispatch } from "react-redux";
 
-const LoginModal = ({ children }) => {
-  const dispatch = useDispatch();
+const LoginModal = ({ children, defaultOpen = false }) => {
   // Modal ki open/close state ko control karne ke liye
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
 
-  const handleGoogleLogin = async () => {
+  const dispatch = useDispatch();
+
+  const handleGoogleLogin = () => {
     try {
-      const result = await signInWithPopup(auth, provider);
-      console.log(result.user);
+      toast.info("Connecting to Google Auth Flow...");
 
-      const userData = {
-        email: result.user.email,
-        name: result.user.displayName,
-        avatar: result.user.photoURL,
-      };
+      const clientId =
+        "751718520634-v7n7drrheqjk3h9m2d8pr96gm8tep2v7.apps.googleusercontent.com";
 
-      // 1. Redux store mein login data bheja
-      dispatch(login(userData));
+      // 🔴 Ab yeh port 3000 (aapke sahi backend) par request bhejega
+      const redirectUri = "http://localhost:3000/api/auth/google/callback";
+      const scope =
+        "https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email";
+      const responseType = "code";
 
-      // 2. Successful login ke baad modal ko automatic close kar diya
-      setOpen(false);
-      toast.success("Logged in successfully!");
+      const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scope)}&response_type=${responseType}&prompt=select_account`;
+
+      window.location.href = authUrl;
     } catch (error) {
-      console.log("Login error:", error);
-      toast.error("Failed to log in.");
+      console.error("OAuth Error:", error);
+      toast.error("Failed to initiate Google Login.");
     }
   };
 
   return (
-    // open aur onOpenChange props lagaye taake state manually handle ho sake
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        {children || <Button>Log in</Button>}
-      </DialogTrigger>
+      {/* Only render the trigger when an explicit trigger child is provided.
+          When used as an auth-guard (defaultOpen=true, no children),
+          the dialog is controlled by state alone — no trigger needed. */}
+      {children && <DialogTrigger asChild>{children}</DialogTrigger>}
 
       <DialogContent className="sm:max-w-[400px] border-primary/10 bg-background/95 backdrop-blur-xl shadow-2xl overflow-hidden ring-0 focus:ring-0 outline-none">
         {/* Glow effect */}

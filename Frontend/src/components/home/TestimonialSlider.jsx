@@ -60,7 +60,6 @@ const MarqueeCard = ({ name, role, avatar, text, rating }) => (
         <img
           src={avatar}
           alt={name}
-          crossOrigin="anonymous"
           loading="lazy"
           className="h-10 w-10 rounded-full object-cover ring-2 ring-primary/10 group-hover/card:ring-primary/40 transition-all"
         />
@@ -81,21 +80,21 @@ const featured = [
   {
     name: "Sarah Chen",
     role: "Founder, Nova Labs",
-    avatar: "https://i.pravatar.cc/120?img=47",
+    avatar: "https://ui-avatars.com/api/?name=Sarah+Chen&background=6d28d9&color=fff&size=120",
     text: "Lume replaced our entire design sprint. We shipped a polished marketing site in an afternoon — the AI understood our brand voice on the first try.",
     rating: 5,
   },
   {
     name: "Marcus Reid",
     role: "CTO, Driftwood Studio",
-    avatar: "https://i.pravatar.cc/120?img=12",
+    avatar: "https://ui-avatars.com/api/?name=Marcus+Reid&background=2563eb&color=fff&size=120",
     text: "The edge hosting is unreal. Our Lighthouse scores went from 60s to perfect 100s without touching a single line of config.",
     rating: 5,
   },
   {
     name: "Aisha Patel",
     role: "Indie Maker",
-    avatar: "https://i.pravatar.cc/120?img=32",
+    avatar: "https://ui-avatars.com/api/?name=Aisha+Patel&background=7c3aed&color=fff&size=120",
     text: "I described my coffee shop in one sentence and got a fully responsive, SEO-ready site. This is the future of building on the web.",
     rating: 5,
   },
@@ -105,42 +104,42 @@ const marqueeItems = [
   {
     name: "Elena Voss",
     role: "Designer",
-    avatar: "https://i.pravatar.cc/80?img=5",
+    avatar: "https://ui-avatars.com/api/?name=Elena+Voss&background=9333ea&color=fff&size=80",
     text: "The animations feel hand-crafted, not generated.",
     rating: 5,
   },
   {
     name: "Tom Becker",
     role: "Developer",
-    avatar: "https://i.pravatar.cc/80?img=15",
+    avatar: "https://ui-avatars.com/api/?name=Tom+Becker&background=3b82f6&color=fff&size=80",
     text: "Best DX I've had with any site builder, period.",
     rating: 5,
   },
   {
     name: "Lina Park",
     role: "PM, Flow",
-    avatar: "https://i.pravatar.cc/80?img=25",
+    avatar: "https://ui-avatars.com/api/?name=Lina+Park&background=6d28d9&color=fff&size=80",
     text: "We cut our landing-page time-to-launch by 90%.",
     rating: 5,
   },
   {
     name: "Diego Santos",
     role: "Founder",
-    avatar: "https://i.pravatar.cc/80?img=8",
+    avatar: "https://ui-avatars.com/api/?name=Diego+Santos&background=1d4ed8&color=fff&size=80",
     text: "The AI actually understands layout hierarchy.",
     rating: 5,
   },
   {
     name: "Mia Wong",
     role: "Marketer",
-    avatar: "https://i.pravatar.cc/80?img=20",
+    avatar: "https://ui-avatars.com/api/?name=Mia+Wong&background=7c3aed&color=fff&size=80",
     text: "Conversion went up 2x after switching to Lume.",
     rating: 5,
   },
   {
     name: "Omar Faruk",
     role: "Engineer",
-    avatar: "https://i.pravatar.cc/80?img=33",
+    avatar: "https://ui-avatars.com/api/?name=Omar+Faruk&background=4f46e5&color=fff&size=80",
     text: "Edge delivery is genuinely instant worldwide.",
     rating: 5,
   },
@@ -227,7 +226,6 @@ const TestimonialSlider = () => {
                   <img
                     src={active.avatar}
                     alt={active.name}
-                    crossOrigin="anonymous"
                     className="h-12 w-12 rounded-full object-cover ring-2 ring-primary/20"
                   />
                   <div>

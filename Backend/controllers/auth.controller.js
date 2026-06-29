@@ -6,6 +6,7 @@ import jwt from "jsonwebtoken";
 import wrapAsync from "../utils/wrapAsync.js";
 
 export const googleAuth = wrapAsync(async (req, res) => {
+  console.log(req.body);
   const validation = googleAuthValidation.validate(req.body);
   if (validation.error) {
     throw new ExpressError(validation.error.details[0].message, 400);
@@ -14,30 +15,37 @@ export const googleAuth = wrapAsync(async (req, res) => {
   let user = await User.findOne({ email });
   let isNewUser = false;
   if (!user) {
-    user = await User({ name, email, avatar });
+    user = new User({ name, email, avatar });
     await user.save();
     isNewUser = true;
   }
-  
+
   const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
     expiresIn: "7d",
   });
-  
+
   res.cookie("token", token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     maxAge: 7 * 24 * 60 * 60 * 1000,
   });
-  
-  res.status(200).json(new ApiResponse(200, { token, user }, isNewUser ? "User created successfully" : "User logged in successfully"));
-});
 
+  res
+    .status(200)
+    .json(
+      new ApiResponse(
+        200,
+        { token, user },
+        isNewUser ? "User created successfully" : "User logged in successfully",
+      ),
+    );
+});
 export const logout = wrapAsync(async (req, res) => {
   res.clearCookie("token", {
     httpOnly: true,
-    secure: false,
-    sameSite: "strict",
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
   });
   res
     .status(200)
