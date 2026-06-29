@@ -12,7 +12,15 @@ import cors from "cors";
 
 // Fail fast if required environment variables are missing.
 // This prevents silent 500s on /api/auth/google and /api/user/me.
-const REQUIRED_ENV = ["JWT_SECRET", "MONGODB_URL"];
+// GOOGLE_OAUTH_* are required for the raw Google OAuth redirect flow used by
+// LoginModal.jsx → GET /api/auth/google/callback.
+const REQUIRED_ENV = [
+  "JWT_SECRET",
+  "MONGODB_URL",
+  "GOOGLE_OAUTH_CLIENT_ID",
+  "GOOGLE_OAUTH_CLIENT_SECRET",
+  "GOOGLE_OAUTH_REDIRECT_URI",
+];
 const missingEnv = REQUIRED_ENV.filter((key) => !process.env[key]);
 if (missingEnv.length) {
   console.error(

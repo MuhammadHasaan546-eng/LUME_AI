@@ -11,38 +11,58 @@ import {
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Sparkles } from "lucide-react";
-import {
-  signInWithPopup,
-  signInWithRedirect,
-  getRedirectResult,
-} from "firebase/auth";
-import { auth, provider } from "@/config/firebase";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
-import { useDispatch } from "react-redux";
+
+// Google OAuth 2.0 client config. The backend exchanges the resulting code for
+// tokens in GET /api/auth/google/callback (see auth.controller.js).
+const GOOGLE_CLIENT_ID =
+  import.meta.env.VITE_GOOGLE_CLIENT_ID ||
+  "751718520634-v7n7drrheqjk3h9m2d8pr96gm8tep2v7.apps.googleusercontent.com";
+const GOOGLE_REDIRECT_URI =
+  import.meta.env.VITE_GOOGLE_REDIRECT_URI ||
+  "http://localhost:3000/api/auth/google/callback";
+
+// Human-readable messages for the ?auth_error=... values the backend may
+// redirect back with from the OAuth callback.
+const AUTH_ERROR_MESSAGES = {
+  access_denied: "Google sign-in was cancelled.",
+  missing_code: "Google did not return an authorization code.",
+  code_exchange_failed:
+    "Google rejected the sign-in code. Check the OAuth client secret and redirect URI in the backend .env.",
+  no_id_token: "Google did not return a verified identity token.",
+  invalid_id_token: "Google identity token verification failed.",
+  no_email_in_profile: "Your Google account did not provide an email.",
+};
 
 const LoginModal = ({ children, defaultOpen = false }) => {
   // Modal ki open/close state ko control karne ke liye
   const [open, setOpen] = useState(defaultOpen);
+  const [searchParams, setSearchParams] = useSearchParams();
 
-  const dispatch = useDispatch();
+  // If the backend OAuth callback redirected back with ?auth_error=..., show a
+  // toast and clean the URL so the error doesn't persist on refresh.
+  useEffect(() => {
+    const authError = searchParams.get("auth_error");
+    if (authError) {
+      toast.error(
+        AUTH_ERROR_MESSAGES[authError] ||
+          `Google sign-in failed (${authError}).`,
+      );
+      searchParams.delete("auth_error");
+      setSearchParams(searchParams, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
 
   const handleGoogleLogin = () => {
     try {
       toast.info("Connecting to Google Auth Flow...");
 
-      const clientId =
-        "751718520634-v7n7drrheqjk3h9m2d8pr96gm8tep2v7.apps.googleusercontent.com";
-
-      // 🔴 Ab yeh port 3000 (aapke sahi backend) par request bhejega
-      const redirectUri = "http://localhost:3000/api/auth/google/callback";
       const scope =
         "https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email";
       const responseType = "code";
 
-      const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${encodeURIComponent(scope)}&response_type=${responseType}&prompt=select_account`;
-
-      window.location.href = authUrl;
+      const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${GOOGLE_CLIENT_ID}&redirect_uri=${encodeURIComponent(GOOGLE_REDIRECT_URI)}&scope=${encodeURIComponent(scope)}&response_type=${responseType}&prompt=select_account`;
     } catch (error) {
       console.error("OAuth Error:", error);
       toast.error("Failed to initiate Google Login.");
