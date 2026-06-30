@@ -20,6 +20,18 @@ export default defineConfig({
     include: ["@monaco-editor/react"],
   },
   server: {
+    // WebContainer requires a cross-origin isolated context so it can
+    // transfer SharedArrayBuffer between the main thread and its worker.
+    // Without these headers self.crossOriginIsolated === false and boot()
+    // throws: "DataCloneError: SharedArrayBuffer transfer requires
+    // self.crossOriginIsolated".
+    headers: {
+      "Cross-Origin-Opener-Policy": "same-origin",
+      "Cross-Origin-Embedder-Policy": "require-corp",
+      // Allow the WebContainer iframe (served from a different origin) to
+      // be embedded while keeping the page isolated.
+      "Cross-Origin-Resource-Policy": "cross-origin",
+    },
     // Proxy /api/* to the backend so the browser never talks directly to
     // https://localhost:3000 (which uses a self-signed cert the browser
     // rejects with ERR_CERT_AUTHORITY_INVALID). Vite forwards requests

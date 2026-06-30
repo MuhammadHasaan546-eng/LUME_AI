@@ -79,12 +79,15 @@ server.listen(3000, () => {
       msg.includes("apikey") ||
       msg.includes("configuration") ||
       msg.includes("cross-origin") ||
+      msg.includes("crossoriginisolated") ||
+      msg.includes("sharedarraybuffer") ||
       msg.includes("permission") ||
       msg.includes("unauthorized") ||
       msg.includes("forbidden") ||
       msg.includes("network") ||
       msg.includes("fetch") ||
-      msg.includes("failed to fetch")
+      msg.includes("failed to fetch") ||
+      msg.includes("datacloneerror")
     );
   };
 
@@ -274,6 +277,19 @@ server.listen(3000, () => {
           if (!apiKey || apiKey === "your_webcontainer_api_key_here") {
             enableSandboxFallback(
               "Missing or placeholder VITE_WEBCONTAINER_API_KEY",
+            );
+            return null;
+          }
+
+          // WebContainer requires a cross-origin isolated context to
+          // transfer SharedArrayBuffer to its worker. If the page is not
+          // isolated (missing COOP/COEP headers), boot() throws a
+          // DataCloneError. Detect this up front and fall back to the
+          // sandbox preview instead of letting the error surface.
+          if (typeof window !== "undefined" && !window.crossOriginIsolated) {
+            enableSandboxFallback(
+              "Page is not cross-origin isolated (SharedArrayBuffer unavailable). " +
+                "Add Cross-Origin-Opener-Policy and Cross-Origin-Embedder-Policy headers.",
             );
             return null;
           }

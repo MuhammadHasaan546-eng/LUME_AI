@@ -119,7 +119,17 @@ function repairTruncatedHtml(html) {
   return repaired;
 }
 
-function decodeJsonEscapes(value) {
+/**
+ * Decode JSON string escape sequences (e.g. \" \\n \\t) back to their
+ * literal characters. This is ONLY needed for code extracted via regex
+ * from raw (un-parsed) AI text. Code that has already passed through
+ * JSON.parse() is already correctly decoded and MUST NOT be passed through
+ * this function again — doing so corrupts legitimate JS escape sequences
+ * (e.g. a /\n/ regex becomes a broken literal newline, causing
+ * "Unexpected token" SyntaxErrors in the iframe srcDoc preview).
+ */
+export function decodeJsonEscapes(value) {
+  if (typeof value !== "string") return value;
   return value
     .replace(/\\r\\n/g, "\n")
     .replace(/\\n/g, "\n")
@@ -140,7 +150,12 @@ export function cleanGeneratedHtml(code) {
     .replace(/```$/i, "")
     .trim();
 
-  cleaned = decodeJsonEscapes(cleaned);
+  // NOTE: decodeJsonEscapes() is intentionally NOT called here. This
+  // function runs on code that has already been JSON.parse()'d in the
+  // happy path, so the escapes are already decoded. Re-decoding would
+  // mangle valid JS (regexes, template literals) and break the preview.
+  // decodeJsonEscapes is applied only at the regex-fallback extraction
+  // sites in the website controller, where raw (un-parsed) text is used.
 
   const htmlStart = cleaned.search(/<!doctype html>|<html[\s>]/i);
   if (htmlStart !== -1) {

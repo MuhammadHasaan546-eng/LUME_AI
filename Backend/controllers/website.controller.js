@@ -1,6 +1,7 @@
 import generateAIResponse, {
   parseAIWebsiteResponse,
   cleanGeneratedHtml,
+  decodeJsonEscapes,
 } from "../config/openRouter.js";
 import ExpressError from "../utils/ExpressError.js";
 import ApiResponse from "../utils/ApiResponse.js";
@@ -261,14 +262,16 @@ export const generateWebSite = wrapAsync(async (req, res) => {
       } catch (innerError) {
         // JSON parse fail ho gaya — code field ko regex se nikalein.
         // "code": "..." ke baad ki string capture karta hai (truncated bhi).
+        // Yahan raw (un-parsed) text se extract ho raha hai, isliye JSON
+        // escape sequences (\\n, \\", \\/) ko decode karna zaroori hai.
         const codeMatch = cleanText.match(/"code"\s*:\s*"([\s\S]*?)"\s*[,}]/);
         if (codeMatch && codeMatch[1]) {
-          parsedResponse.code = codeMatch[1];
+          parsedResponse.code = decodeJsonEscapes(codeMatch[1]);
         } else {
           // Truncated JSON — take everything after "code": " to the end.
           const partial = cleanText.match(/"code"\s*:\s*"([\s\S]*)/);
           if (partial && partial[1]) {
-            parsedResponse.code = partial[1];
+            parsedResponse.code = decodeJsonEscapes(partial[1]);
           }
         }
       }
@@ -423,14 +426,16 @@ export const updateWebsite = wrapAsync(async (req, res) => {
         if (directJson.message) parsedResponse.message = directJson.message;
       } catch (innerError) {
         // JSON parse fail ho gaya — code field ko regex se nikalein.
+        // Raw (un-parsed) text se extract ho raha hai, isliye JSON escape
+        // sequences ko decode karna zaroori hai taaki preview break na ho.
         const codeMatch = cleanText.match(/"code"\s*:\s*"([\s\S]*?)"\s*[,}]/);
         if (codeMatch && codeMatch[1]) {
-          parsedResponse.code = codeMatch[1];
+          parsedResponse.code = decodeJsonEscapes(codeMatch[1]);
         } else {
           // Truncated JSON — take everything after "code": " to the end.
           const partial = cleanText.match(/"code"\s*:\s*"([\s\S]*)/);
           if (partial && partial[1]) {
-            parsedResponse.code = partial[1];
+            parsedResponse.code = decodeJsonEscapes(partial[1]);
           }
         }
       }
