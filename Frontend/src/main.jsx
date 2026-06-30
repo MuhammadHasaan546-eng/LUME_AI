@@ -8,6 +8,7 @@ import store from "./store/store";
 import { Toaster } from "./components/ui/sonner";
 import App from "./App";
 import ThemeStoreSync from "./components/home/ThemeStoreSync";
+import SmoothScroll from "./components/home/scroll";
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>
@@ -20,6 +21,7 @@ createRoot(document.getElementById("root")).render(
         disableTransitionOnChange
       >
         <ThemeStoreSync />
+        <SmoothScroll />
         <App />
         <Toaster />
       </ThemeProvider>
