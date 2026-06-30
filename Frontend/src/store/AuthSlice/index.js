@@ -22,8 +22,9 @@ const authSlice = createSlice({
         state.isAuthenticated = true;
         state.isLoading = false;
 
-        const userData = action.payload.data.user;
-        const userToken = action.payload.data.token;
+        // Backend ApiResponse shape: { statusCode, data: { token, user }, message }
+        const userData = action.payload.data?.user;
+        const userToken = action.payload.data?.token;
 
         state.user = userData;
         state.token = userToken;
@@ -43,13 +44,16 @@ const authSlice = createSlice({
       })
       .addCase(getCurrentUser.fulfilled, (state, action) => {
         state.isLoading = false;
-        state.user = action.payload.data.user;
-        state.token = action.payload.data.token;
+        // /api/user/me only returns { data: { user } }, never a token
+        state.user = action.payload.data?.user;
         state.isAuthenticated = true;
+        // Do NOT touch state.token here — preserve what login() already set
       })
       .addCase(getCurrentUser.rejected, (state) => {
         state.isLoading = false;
         state.isAuthenticated = false;
+        state.user = null;
+        state.token = null;
       });
 
     builder

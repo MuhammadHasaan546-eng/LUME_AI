@@ -1,5 +1,6 @@
 import generateAIResponse, {
   parseAIWebsiteResponse,
+  cleanGeneratedHtml,
 } from "../config/openRouter.js";
 import ExpressError from "../utils/ExpressError.js";
 import ApiResponse from "../utils/ApiResponse.js";
@@ -35,18 +36,24 @@ function mapAIServiceError(error) {
 const masterPrompt = `
 YOU ARE A PRINCIPAL FRONTEND ARCHITECT
 AND A SENIOR UI/UX ENGINEER
-SPECIALIZED IN RESPONSIVE DESIGN SYSTEMS.
+SPECIALIZED IN REACT 18 + NEXT.JS DESIGN SYSTEMS.
 
 YOU BUILD HIGH-END, REAL-WORLD, PRODUCTION-GRADE WEBSITES
-USING ONLY HTML, CSS, AND JAVASCRIPT
-THAT WORK PERFECTLY ON ALL SCREEN SIZES.
+USING REACT 18 (FUNCTIONAL COMPONENTS + HOOKS) WRITTEN IN
+NEXT.JS STYLE, DELIVERED AS ONE SELF-CONTAINED HTML FILE THAT
+RUNS IN-BROWSER VIA CDN (React + ReactDOM + Babel + Tailwind).
 
 THE OUTPUT MUST BE CLIENT-DELIVERABLE WITHOUT ANY MODIFICATION.
 
-❌ NO FRAMEWORKS
-❌ NO LIBRARIES
+✔ React 18 (functional components, hooks: useState, useEffect, useRef)
+✔ Next.js App-Router conventions & component thinking
+✔ Tailwind CSS (via CDN) for styling
+✔ Works on ALL screen sizes
+
+❌ NO BUILD STEP REQUIRED (CDN-based, runs instantly)
 ❌ NO BASIC SITES
 ❌ NO PLACEHOLDERS
+❌ NO LOREM IPSUM
 ❌ NO NON-RESPONSIVE LAYOUTS
 
 --------------------------------------------------
@@ -61,7 +68,7 @@ GLOBAL QUALITY BAR (NON-NEGOTIABLE)
 - Clean visual hierarchy
 - Business-ready content (NO lorem ipsum)
 - Smooth transitions & hover effects
-- SPA-style multi-page experience
+- SPA-style multi-page experience (React state-driven routing)
 - Production-ready, readable code
 
 --------------------------------------------------
@@ -71,22 +78,22 @@ THIS WEBSITE MUST BE FULLY RESPONSIVE.
 
 YOU MUST IMPLEMENT:
 
-✔ Mobile-first CSS approach
+✔ Mobile-first Tailwind approach (sm:, md:, lg: breakpoints)
 ✔ Responsive layout for:
   - Mobile (<768px)
   - Tablet (768px–1024px)
   - Desktop (>1024px)
 
 ✔ Use:
-  - CSS Grid / Flexbox
-  - Relative units (%, rem, vw)
-  - Media queries
+  - Tailwind responsive utilities (grid, flex, gap, etc.)
+  - Relative units (%, rem, vw) where needed
+  - Mobile-first class ordering
 
 ✔ REQUIRED RESPONSIVE BEHAVIOR:
-  - Navbar collapses / stacks on mobile
+  - Navbar collapses / stacks on mobile (hamburger menu)
   - Sections stack vertically on mobile
   - Multi-column layouts become single-column on small screens
-  - Images scale proportionally
+  - Images scale proportionally (w-full h-auto object-cover)
   - Text remains readable on all devices
   - No horizontal scrolling on mobile
   - Touch-friendly buttons on mobile
@@ -102,7 +109,7 @@ IMAGES (MANDATORY & RESPONSIVE)
   ?auto=format&fit=crop&w=1200&q=80
 
 - Images must:
-  - Be responsive (max-width: 100%)
+  - Be responsive (className="w-full h-auto object-cover")
   - Resize correctly on mobile
   - Never overflow containers
 
@@ -110,24 +117,43 @@ IMAGES (MANDATORY & RESPONSIVE)
 TECHNICAL RULES (VERY IMPORTANT)
 --------------------------------------------------
 - Output ONE single HTML file
-- Exactly ONE <style> tag
-- Exactly ONE <script> tag
-- NO external CSS / JS / fonts
-- Use system fonts only
-- iframe srcdoc compatible
-- SPA-style navigation using JavaScript
-- No page reloads
+- Include in <head> EXACTLY these CDN scripts:
+    * React 18 production UMD (react.development.js or react.production.min.js)
+    * ReactDOM 18 production UMD (react-dom.production.min.js)
+    * Babel Standalone (babel.min.js) for in-browser JSX transform
+    * Tailwind CSS CDN (tailwindcss.com script)
+- Write the React app inside ONE <script type="text/babel"> tag
+- Use functional components + hooks (useState, useEffect, useRef)
+- Mount the app with ReactDOM.createRoot(document.getElementById('root')).render(<App />)
+- NO external CSS files (use Tailwind utility classes + ONE <style> tag for custom CSS only)
+- Use system fonts (or Tailwind font stack)
+- iframe srcdoc compatible (everything self-contained)
+- SPA-style navigation using React state (NO page reloads)
 - No dead UI
 - No broken buttons
+
+--------------------------------------------------
+REACT / NEXT.JS STYLE GUIDELINES
+--------------------------------------------------
+- Structure the app like a Next.js App Router project:
+    App (root) → Navbar + Page Router + Footer
+- Create separate functional components for each page:
+    Home, About, Services, Contact
+- Use a simple page-state router (e.g. const [page, setPage] = useState('home'))
+- Pass props cleanly; keep components small & reusable
+- Use hooks for interactivity (mobile menu toggle, form state, validation)
+- Active nav state must update based on current page
+- Forms must have React-controlled validation
+- Buttons must show hover + active states (Tailwind transitions)
+- Smooth section/page transitions (CSS transitions or conditional classes)
+
 --------------------------------------------------
 SPA VISIBILITY RULE (MANDATORY)
 --------------------------------------------------
-- Pages MUST NOT be hidden permanently
-- If .page { display: none } is used,
-  then .page.active { display: block } is REQUIRED
-- At least ONE page MUST be visible on initial load
+- The Home page MUST be visible on initial load (default page state)
+- Pages are switched via React state, NOT CSS display toggling
+- At least ONE page is always rendered
 - Hiding all content is INVALID
-
 
 --------------------------------------------------
 REQUIRED SPA PAGES
@@ -140,10 +166,11 @@ REQUIRED SPA PAGES
 --------------------------------------------------
 FUNCTIONAL REQUIREMENTS
 --------------------------------------------------
-- Navigation must switch pages using JS
-- Active nav state must update
-- Forms must have JS validation
-- Buttons must show hover + active states
+- Navigation switches pages via React state
+- Active nav link is highlighted
+- Contact form uses controlled inputs + JS validation
+- Mobile hamburger menu opens/closes
+- Buttons show hover + active states
 - Smooth section/page transitions
 
 --------------------------------------------------
@@ -155,9 +182,11 @@ BEFORE RESPONDING, ENSURE:
 2. No horizontal scroll on mobile
 3. All images are responsive
 4. All sections adapt properly
-5. Media queries are present and used
+5. Tailwind responsive classes are present and used
 6. Navigation works on all screen sizes
-7. At least ONE page is visible without user interaction
+7. Home page is visible without user interaction
+8. React 18 + ReactDOM + Babel + Tailwind CDNs are included
+9. App mounts to #root via ReactDOM.createRoot
 
 IF ANY CHECK FAILS → RESPONSE IS INVALID
 
@@ -166,7 +195,7 @@ OUTPUT FORMAT (RAW JSON ONLY)
 --------------------------------------------------
 {
   "message": "Short professional confirmation sentence",
-  "code": "<FULL VALID HTML DOCUMENT>"
+  "code": "<FULL VALID HTML DOCUMENT with React 18 + Tailwind CDN>"
 }
 
 --------------------------------------------------
@@ -223,7 +252,8 @@ export const generateWebSite = wrapAsync(async (req, res) => {
       e,
     );
 
-    // 2. FALLBACK SAFETAEY: Agar standard parse fail ho jaye, toh raw text se HTML nikalein
+    // 2. FALLBACK SAFETY: Agar standard parse fail ho jaye, toh raw text se
+    // HTML nikalein. Kabhi bhi raw JSON ko code ke roop mein store na karein.
     let cleanText = aiResponse.trim();
 
     // Markdown syntax saaf karein (```json ... ``` ya ```html ... ```)
@@ -238,20 +268,39 @@ export const generateWebSite = wrapAsync(async (req, res) => {
     if (cleanText.includes('"code":') || cleanText.includes("'code':")) {
       try {
         const directJson = JSON.parse(cleanText);
-        parsedResponse.code = directJson.code;
+        if (directJson.code) parsedResponse.code = directJson.code;
         if (directJson.message) parsedResponse.message = directJson.message;
       } catch (innerError) {
-        // Agar JSON parse ab bhi fail ho, toh direct string ko hi code maan lein
-        parsedResponse.code = cleanText;
+        // JSON parse fail ho gaya — code field ko regex se nikalein.
+        // "code": "..." ke baad ki string capture karta hai (truncated bhi).
+        const codeMatch = cleanText.match(/"code"\s*:\s*"([\s\S]*?)"\s*[,}]/);
+        if (codeMatch && codeMatch[1]) {
+          parsedResponse.code = codeMatch[1];
+        } else {
+          // Truncated JSON — take everything after "code": " to the end.
+          const partial = cleanText.match(/"code"\s*:\s*"([\s\S]*)/);
+          if (partial && partial[1]) {
+            parsedResponse.code = partial[1];
+          }
+        }
       }
     } else {
       // Agar AI ne bina JSON format ke direct code bhej diya hai
       parsedResponse.code = cleanText;
     }
+
+    // Final safety: code ko hamesha clean HTML mein convert karein.
+    // Agar cleanGeneratedHtml ke baad bhi koi HTML document nahi mila,
+    // toh response invalid hai — raw JSON/text kabhi store na karein.
+    parsedResponse.code = cleanGeneratedHtml(parsedResponse.code || "");
   }
 
-  // Double check ke code empty na ho
-  if (!parsedResponse.code || parsedResponse.code.trim() === "") {
+  // Double check ke code empty na ho aur ek valid HTML document ho
+  if (
+    !parsedResponse.code ||
+    parsedResponse.code.trim() === "" ||
+    !/<html[\s>]/i.test(parsedResponse.code)
+  ) {
     throw new ExpressError(
       "AI response was empty or invalid. Please try again.",
       502,
@@ -382,19 +431,36 @@ export const updateWebsite = wrapAsync(async (req, res) => {
     if (cleanText.includes('"code":') || cleanText.includes("'code':")) {
       try {
         const directJson = JSON.parse(cleanText);
-        parsedResponse.code = directJson.code;
+        if (directJson.code) parsedResponse.code = directJson.code;
         if (directJson.message) parsedResponse.message = directJson.message;
       } catch (innerError) {
-        parsedResponse.code = cleanText;
+        // JSON parse fail ho gaya — code field ko regex se nikalein.
+        const codeMatch = cleanText.match(/"code"\s*:\s*"([\s\S]*?)"\s*[,}]/);
+        if (codeMatch && codeMatch[1]) {
+          parsedResponse.code = codeMatch[1];
+        } else {
+          // Truncated JSON — take everything after "code": " to the end.
+          const partial = cleanText.match(/"code"\s*:\s*"([\s\S]*)/);
+          if (partial && partial[1]) {
+            parsedResponse.code = partial[1];
+          }
+        }
       }
     } else {
       // Agar direct code/HTML string bhej di hai AI ne
       parsedResponse.code = cleanText;
     }
+
+    // Final safety: code ko hamesha clean HTML mein convert karein.
+    parsedResponse.code = cleanGeneratedHtml(parsedResponse.code || "");
   }
 
-  // Safety Check: Code khali nahi hona chahiye
-  if (!parsedResponse.code || parsedResponse.code.trim() === "") {
+  // Safety Check: Code khali nahi hona chahiye aur valid HTML document ho
+  if (
+    !parsedResponse.code ||
+    parsedResponse.code.trim() === "" ||
+    !/<html[\s>]/i.test(parsedResponse.code)
+  ) {
     throw new ExpressError(
       "AI updated code was empty or invalid. Please try again.",
       502,

@@ -40,7 +40,7 @@ export const CheckAuth = ({ children, requireAuth = true }) => {
   // Protected route: show login modal when not authenticated, otherwise children.
   if (requireAuth) {
     if (!isAuthenticated) {
-      return <LoginModal />;
+      return <LoginModal defaultOpen={true} />;
     }
     return children;
   }

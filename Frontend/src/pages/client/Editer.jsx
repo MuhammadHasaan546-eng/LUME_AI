@@ -22,6 +22,12 @@ import {
   Columns,
   Rocket,
   Laptop,
+  Folder,
+  FileCode,
+  FileText,
+  ChevronDown,
+  Trash2,
+  Send,
 } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
@@ -30,6 +36,7 @@ import Editor from "@monaco-editor/react";
 import { deployWebsite, getWebsiteById, updateWebsite } from "@/api/website";
 import { setThemePreference } from "@/store/theme";
 import useWebContainer from "@/hooks/useWebContainer";
+import { defaultHtmlTemplate } from "@/templates/defaultTemplate";
 
 const EditorPage = () => {
   const navigate = useNavigate();
@@ -45,9 +52,7 @@ const EditorPage = () => {
     "bg-card border-border text-muted-foreground hover:border-primary/30 hover:text-foreground";
 
   // Core Data States
-  const [code, setCode] = useState(
-    latestCode || "<!-- Write or generate your layout here -->",
-  );
+  const [code, setCode] = useState(latestCode || defaultHtmlTemplate);
   const [prompt, setPrompt] = useState("");
   const [previewMode, setPreviewMode] = useState("desktop"); // desktop, tablet, mobile
   const [copied, setCopied] = useState(false);
@@ -62,14 +67,29 @@ const EditorPage = () => {
   // Mobile Display View Toggle
   const [mobileActiveView, setMobileActiveView] = useState("editor");
 
-  // WebContainer-powered live preview
+  // WebContainer-powered live preview (gracefully degrades to a srcDoc
+  // sandbox when the runtime is unavailable — e.g. invalid API key or
+  // unregistered referrer domain). Also exposes the live file tree and
+  // an interactive terminal backed by the in-browser Node runtime.
   const {
     status: wcStatus,
     previewUrl: wcPreviewUrl,
     error: wcError,
+    fallback: wcFallback,
     boot: bootWebContainer,
     updatePreview: updateWebContainerPreview,
+    fileTree: wcFileTree,
+    refreshFileTree: refreshWcFileTree,
+    terminalLines: wcTerminalLines,
+    runCommand: runWcCommand,
+    clearTerminal: clearWcTerminal,
+    isCommandRunning: wcCommandRunning,
   } = useWebContainer();
+
+  // Interactive terminal input state.
+  const [terminalInput, setTerminalInput] = useState("");
+  const terminalEndRef = useRef(null);
+  const [expandedFolders, setExpandedFolders] = useState({ ".": true });
 
   // Sync state with background data stream
   useEffect(() => {
@@ -78,7 +98,9 @@ const EditorPage = () => {
     }
   }, [latestCode]);
 
-  // Boot the WebContainer once we have initial code.
+  // Boot the WebContainer once we have initial code. The hook itself
+  // handles graceful degradation to sandbox mode, so a failed boot no
+  // longer blocks the editor.
   useEffect(() => {
     if (code && wcStatus === "idle") {
       bootWebContainer(code);
@@ -86,20 +108,22 @@ const EditorPage = () => {
   }, [code, wcStatus, bootWebContainer]);
 
   // Debounced live-update: write code to the container on every change.
+  // Skipped in sandbox fallback mode (the iframe renders srcDoc directly).
   useEffect(() => {
-    if (wcStatus !== "running" || !code) return;
+    if (wcFallback || wcStatus !== "running" || !code) return;
     const debounce = setTimeout(() => {
       updateWebContainerPreview(code);
     }, 600);
     return () => clearTimeout(debounce);
-  }, [code, wcStatus, updateWebContainerPreview]);
+  }, [code, wcStatus, wcFallback, updateWebContainerPreview]);
 
-  // Surface WebContainer errors as toasts.
+  // Surface only non-recoverable WebContainer errors as toasts. Recoverable
+  // errors (referrer / API key) silently fall back to sandbox preview.
   useEffect(() => {
-    if (wcError) {
+    if (wcError && !wcFallback) {
       toast.error(wcError);
     }
-  }, [wcError]);
+  }, [wcError, wcFallback]);
 
   useEffect(() => {
     if (!codeId) return;
@@ -202,6 +226,90 @@ const EditorPage = () => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [conversations.length]);
 
+  // Auto-scroll the terminal to the bottom whenever new output arrives.
+  useEffect(() => {
+    terminalEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [wcTerminalLines.length]);
+
+  // Run a terminal command typed by the user. Splits the raw input into
+  // a command + args array and delegates to the WebContainer spawn API.
+  const handleTerminalSubmit = (e) => {
+    e.preventDefault();
+    const raw = terminalInput.trim();
+    if (!raw || wcCommandRunning || wcFallback) return;
+
+    const parts = raw.split(/\s+/);
+    const command = parts[0];
+    const args = parts.slice(1);
+
+    runWcCommand(command, args);
+    setTerminalInput("");
+  };
+
+  // Toggle a folder's expanded state in the file tree sidebar.
+  const toggleFolder = (path) => {
+    setExpandedFolders((prev) => ({ ...prev, [path]: !prev[path] }));
+  };
+
+  // Pick the right icon for a file based on its extension.
+  const getFileIcon = (name) => {
+    if (name.endsWith(".html"))
+      return <FileCode className="w-3 h-3 text-orange-500" />;
+    if (name.endsWith(".js"))
+      return <FileCode className="w-3 h-3 text-yellow-500" />;
+    if (name.endsWith(".json"))
+      return <FileCode className="w-3 h-3 text-emerald-500" />;
+    if (name.endsWith(".css"))
+      return <FileCode className="w-3 h-3 text-blue-500" />;
+    return <FileText className="w-3 h-3 text-zinc-400" />;
+  };
+
+  // Recursively render the WebContainer file tree.
+  const renderFileTree = (nodes, depth = 0) => {
+    if (!nodes || nodes.length === 0) return null;
+
+    return nodes.map((node) => {
+      const isExpanded = expandedFolders[node.path];
+      const indent = depth * 12;
+
+      if (node.type === "directory") {
+        return (
+          <div key={node.path}>
+            <button
+              onClick={() => toggleFolder(node.path)}
+              className="flex items-center gap-1 w-full text-left py-0.5 px-1 rounded hover:bg-zinc-200/60 dark:hover:bg-zinc-800/60 transition-colors"
+              style={{ paddingLeft: `${indent + 4}px` }}
+            >
+              <ChevronDown
+                className={`w-3 h-3 text-zinc-400 transition-transform ${isExpanded ? "" : "-rotate-90"}`}
+              />
+              <Folder className="w-3 h-3 text-[#4C7294]" />
+              <span className="text-[11px] font-mono text-zinc-600 dark:text-zinc-300 truncate">
+                {node.name}
+              </span>
+            </button>
+            {isExpanded && node.children && (
+              <div>{renderFileTree(node.children, depth + 1)}</div>
+            )}
+          </div>
+        );
+      }
+
+      return (
+        <div
+          key={node.path}
+          className="flex items-center gap-1 py-0.5 px-1 rounded hover:bg-zinc-200/60 dark:hover:bg-zinc-800/60 transition-colors cursor-default"
+          style={{ paddingLeft: `${indent + 20}px` }}
+        >
+          {getFileIcon(node.name)}
+          <span className="text-[11px] font-mono text-zinc-500 dark:text-zinc-400 truncate">
+            {node.name}
+          </span>
+        </div>
+      );
+    });
+  };
+
   const previewCode = useMemo(() => {
     const sandboxGuard = `
 <base href="about:srcdoc">
@@ -232,7 +340,7 @@ const EditorPage = () => {
   return (
     <div className="h-screen w-full transition-colors duration-500 bg-background text-foreground font-sans flex flex-col overflow-hidden selection:bg-primary/20 antialiased">
       {/* 1. PREMIUM HEADER ACCENTS */}
-      <header className="h-14 min-h-[56px] bg-background/60 backdrop-blur-xl px-6 flex items-center justify-between border-b border-border/40 sticky top-0 z-50 transition-all duration-300">
+      <header className="lume-header-accent lume-glass h-14 min-h-[56px] bg-background/60 px-6 flex items-center justify-between border-b border-border/40 sticky top-0 z-50 transition-all duration-300">
         {/* LEFT ACCENTS: BACK NAVIGATION & VIEW SWITCHERS */}
         <div className="flex items-center gap-4">
           <motion.button
@@ -383,7 +491,7 @@ const EditorPage = () => {
       </header>
 
       {/* LUXURIOUS MOBILE BOTTOM RAILS TABS SWAPPER */}
-      <div className="flex lg:hidden bg-background/60 backdrop-blur-xl border-b border-border/40 p-2 gap-2 z-20 shrink-0 transition-all duration-300">
+      <div className="lume-glass flex lg:hidden bg-background/60 border-b border-border/40 p-2 gap-2 z-20 shrink-0 transition-all duration-300">
         {/* AI COPILOT TABS BUTTON */}
         <button
           onClick={() => setMobileActiveView("chat")}
@@ -454,8 +562,8 @@ const EditorPage = () => {
           <div className="w-12 border-r border-zinc-200/60 dark:border-zinc-900/60 bg-zinc-100 dark:bg-[#070708] flex flex-col items-center py-4 gap-4 shrink-0 transition-colors">
             {[
               { id: "ai", icon: Sparkles, label: "Lume AI Copilot" },
-              { id: "layers", icon: Layers, label: "DOM Tree Layout" },
-              { id: "terminal", icon: Terminal, label: "System Logs" },
+              { id: "layers", icon: Layers, label: "Project Files" },
+              { id: "terminal", icon: Terminal, label: "Terminal" },
             ].map((tab) => {
               const IconComp = tab.icon;
               return (
@@ -582,26 +690,47 @@ const EditorPage = () => {
                 <motion.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
-                  className="text-[11px] font-mono space-y-1 overflow-y-auto h-full custom-scrollbar text-zinc-500 dark:text-zinc-500"
+                  className="h-full flex flex-col overflow-hidden"
                 >
-                  <div className="text-zinc-700 dark:text-zinc-400 mb-2 font-sans font-medium text-xs">
-                    DOM Tree Blueprint
-                  </div>
-                  <div className="text-emerald-600 dark:text-emerald-500/80">
-                    &lt;html&gt;
-                  </div>
-                  <div className="pl-3 text-blue-600 dark:text-blue-400/80">
-                    &lt;head&gt;{" "}
-                    <span className="text-zinc-400 dark:text-zinc-700">
-                      // Tailwind Accents
+                  <div className="flex items-center justify-between border-b border-zinc-200 dark:border-zinc-900/60 pb-2 mb-3 shrink-0">
+                    <span className="text-xs font-semibold tracking-wide text-zinc-700 dark:text-zinc-300 flex items-center gap-1.5">
+                      <Layers className="w-3.5 h-3.5 text-[#4C7294]" /> Project
+                      Files
                     </span>
+                    <button
+                      onClick={refreshWcFileTree}
+                      disabled={wcFallback || wcStatus !== "running"}
+                      title="Refresh file tree"
+                      className="p-1 rounded-md hover:bg-zinc-200/60 dark:hover:bg-zinc-800/60 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                    >
+                      <RefreshCw className="w-3 h-3 text-zinc-400" />
+                    </button>
                   </div>
-                  <div className="pl-3 text-emerald-600 dark:text-emerald-500/80">
-                    &lt;body class="bg-[#050505]"&gt;
-                  </div>
-                  <div className="pl-6 text-zinc-600 dark:text-zinc-400">
-                    &lt;main id="root"&gt; ... &lt;/main&gt;
-                  </div>
+
+                  {wcFallback ? (
+                    <div className="flex-1 flex items-center justify-center border border-dashed border-zinc-300 dark:border-zinc-800/80 rounded-xl p-4 text-center bg-zinc-50 dark:bg-zinc-950/20">
+                      <p className="text-[11px] text-zinc-400 dark:text-zinc-500 leading-relaxed">
+                        File tree unavailable in sandbox mode.
+                        <br />
+                        WebContainer runtime required.
+                      </p>
+                    </div>
+                  ) : wcFileTree && wcFileTree.length > 0 ? (
+                    <div className="flex-1 overflow-y-auto custom-scrollbar">
+                      {renderFileTree(wcFileTree)}
+                    </div>
+                  ) : (
+                    <div className="flex-1 flex items-center justify-center">
+                      <RefreshCw className="w-4 h-4 text-zinc-400 animate-spin" />
+                    </div>
+                  )}
+
+                  {wcFileTree && wcFileTree.length > 0 && (
+                    <div className="pt-2 border-t border-zinc-200 dark:border-zinc-900/60 mt-2 shrink-0 text-[10px] font-mono text-zinc-400 dark:text-zinc-600">
+                      {wcFileTree.length} root item
+                      {wcFileTree.length !== 1 ? "s" : ""}
+                    </div>
+                  )}
                 </motion.div>
               )}
 
@@ -609,17 +738,97 @@ const EditorPage = () => {
                 <motion.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
-                  className="font-mono text-[11px] text-zinc-500 dark:text-zinc-600 space-y-1 h-full overflow-y-auto custom-scrollbar"
+                  className="h-full flex flex-col overflow-hidden"
                 >
-                  <div className="text-zinc-400 dark:text-zinc-500 border-b border-zinc-200 dark:border-zinc-900 pb-1 mb-1 text-[10px]">
-                    V8 ISOLATION CONTEXT STRUCT
+                  <div className="flex items-center justify-between border-b border-zinc-200 dark:border-zinc-900/60 pb-2 mb-2 shrink-0">
+                    <span className="text-xs font-semibold tracking-wide text-zinc-700 dark:text-zinc-300 flex items-center gap-1.5">
+                      <Terminal className="w-3.5 h-3.5 text-[#4C7294]" />{" "}
+                      Terminal
+                    </span>
+                    <button
+                      onClick={clearWcTerminal}
+                      disabled={wcFallback}
+                      title="Clear terminal"
+                      className="p-1 rounded-md hover:bg-zinc-200/60 dark:hover:bg-zinc-800/60 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                    >
+                      <Trash2 className="w-3 h-3 text-zinc-400" />
+                    </button>
                   </div>
-                  <div>
-                    [bridge] Native runtime playground established successfully.
-                  </div>
-                  <div className="text-zinc-600 dark:text-zinc-400">
-                    [success] Virtual canvas engine sync complete.
-                  </div>
+
+                  {wcFallback ? (
+                    <div className="flex-1 flex items-center justify-center border border-dashed border-zinc-300 dark:border-zinc-800/80 rounded-xl p-4 text-center bg-zinc-50 dark:bg-zinc-950/20">
+                      <p className="text-[11px] text-zinc-400 dark:text-zinc-500 leading-relaxed">
+                        Terminal unavailable in sandbox mode.
+                        <br />
+                        WebContainer runtime required.
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex-1 overflow-y-auto custom-scrollbar bg-zinc-950/80 dark:bg-black/40 rounded-lg border border-zinc-200 dark:border-zinc-900/60 p-2 font-mono text-[11px] space-y-0.5">
+                        {wcTerminalLines.length === 0 ? (
+                          <div className="text-zinc-600 dark:text-zinc-700">
+                            $ Ready. Type a command and press Enter.
+                          </div>
+                        ) : (
+                          wcTerminalLines.map((line, idx) => (
+                            <div
+                              key={idx}
+                              className={
+                                line.type === "command"
+                                  ? "text-emerald-400"
+                                  : line.type === "error"
+                                    ? "text-red-400"
+                                    : line.type === "success"
+                                      ? "text-sky-400"
+                                      : "text-zinc-300 dark:text-zinc-400"
+                              }
+                            >
+                              {line.type === "command" ? "$ " : ""}
+                              {line.text}
+                            </div>
+                          ))
+                        )}
+                        <div ref={terminalEndRef} />
+                      </div>
+
+                      <form
+                        onSubmit={handleTerminalSubmit}
+                        className="mt-2 flex items-center gap-1.5 shrink-0"
+                      >
+                        <span className="text-emerald-500 font-mono text-[11px]">
+                          $
+                        </span>
+                        <input
+                          type="text"
+                          value={terminalInput}
+                          onChange={(e) => setTerminalInput(e.target.value)}
+                          placeholder={
+                            wcCommandRunning
+                              ? "Running..."
+                              : "Enter command (e.g. ls, npm install)"
+                          }
+                          disabled={wcCommandRunning}
+                          className="flex-1 bg-zinc-100 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-md px-2 py-1.5 text-[11px] font-mono text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-600 focus:outline-none focus:border-[#4C7294]/60 transition-colors disabled:opacity-50"
+                        />
+                        <button
+                          type="submit"
+                          disabled={
+                            !terminalInput.trim() ||
+                            wcCommandRunning ||
+                            wcFallback
+                          }
+                          className="p-1.5 rounded-md bg-[#4C7294]/10 hover:bg-[#4C7294] text-[#4C7294] hover:text-white transition-all disabled:opacity-20"
+                        >
+                          {wcCommandRunning ? (
+                            <RefreshCw className="w-3 h-3 animate-spin" />
+                          ) : (
+                            <Send className="w-3 h-3" />
+                          )}
+                        </button>
+                      </form>
+                    </>
+                  )}
                 </motion.div>
               )}
             </AnimatePresence>
@@ -722,7 +931,7 @@ const EditorPage = () => {
           </div>
 
           {/* Sandbox Wrapper Frame */}
-          <div className="flex-1 flex items-center justify-center overflow-hidden bg-zinc-200/50 dark:bg-zinc-950/40 rounded-xl border border-zinc-200 dark:border-zinc-900/60 p-1 relative">
+          <div className="lume-canvas-grid flex-1 flex items-center justify-center overflow-hidden bg-zinc-200/50 dark:bg-zinc-950/40 rounded-xl border border-zinc-200 dark:border-zinc-900/60 p-1 relative">
             <AnimatePresence>
               {(isCompiling ||
                 isLoading ||
@@ -759,7 +968,7 @@ const EditorPage = () => {
                 maxWidth: "100%",
               }}
               transition={{ type: "spring", stiffness: 340, damping: 26 }}
-              className="h-full bg-white rounded-lg shadow-xl overflow-hidden border border-zinc-200 dark:border-zinc-900/40 relative w-full"
+              className="lume-glow-frame h-full bg-white rounded-lg shadow-xl overflow-hidden border border-zinc-200 dark:border-zinc-900/40 relative w-full"
             >
               {previewMode !== "desktop" && (
                 <div className="h-10 border-b border-border bg-muted/40 px-4 flex items-center justify-between">
@@ -774,6 +983,12 @@ const EditorPage = () => {
                 sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
                 className="w-full h-full bg-white border-0"
               />
+              {wcFallback && (
+                <div className="absolute top-2 left-2 z-20 flex items-center gap-1.5 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[9px] font-mono font-semibold uppercase tracking-wider text-amber-600 dark:text-amber-400 backdrop-blur-sm">
+                  <span className="w-1 h-1 rounded-full bg-amber-500 animate-pulse" />
+                  Sandbox Preview
+                </div>
+              )}
             </motion.div>
           </div>
 
@@ -781,18 +996,24 @@ const EditorPage = () => {
           <div className="flex items-center justify-between text-[10px] font-mono text-zinc-400 dark:text-zinc-600 pt-3 border-t border-zinc-200 dark:border-zinc-900/60 mt-4 shrink-0">
             <span className="flex items-center gap-1">
               <span
-                className={`w-1 h-1 rounded-full ${
+                className={`lume-status-pulse w-1.5 h-1.5 rounded-full ${
                   wcStatus === "running"
                     ? "bg-emerald-500"
                     : wcStatus === "error"
                       ? "bg-red-500"
-                      : "bg-amber-500"
+                      : wcStatus === "sandbox"
+                        ? "bg-sky-500"
+                        : "bg-amber-500"
                 }`}
               />{" "}
-              WEBCONTAINER: {wcStatus.toUpperCase()}
+              ENGINE: {wcFallback ? "SANDBOX" : wcStatus.toUpperCase()}
             </span>
             <span className="hidden xs:inline">
-              {wcPreviewUrl ? "Live Node Runtime" : "Sandboxed Execution Node"}
+              {wcPreviewUrl
+                ? "Live Node Runtime"
+                : wcFallback
+                  ? "Sandboxed srcDoc Preview"
+                  : "Sandboxed Execution Node"}
             </span>
           </div>
         </div>

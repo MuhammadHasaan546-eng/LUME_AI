@@ -56,14 +56,67 @@ function extractHtmlDocument(text) {
     .replace(/```html/gi, "")
     .replace(/```/g, "")
     .trim();
-  const start = cleaned.search(/<!doctype html>|<html[\s>]/i);
-  const end = cleaned.lastIndexOf("</html>");
 
-  if (start === -1 || end === -1 || end <= start) {
-    throw new Error("AI response does not contain a full HTML document");
+  const start = cleaned.search(/<!doctype html>|<html[\s>]/i);
+
+  // No HTML document at all.
+  if (start === -1) {
+    throw new Error("AI response does not contain an HTML document");
   }
 
-  return cleaned.slice(start, end + "</html>".length).trim();
+  // Find the closing </html> tag if present. If the response was truncated
+  // (common with long generations), we still salvage everything from the
+  // opening tag to the end and auto-close the document so it renders.
+  const end = cleaned.toLowerCase().lastIndexOf("</html>");
+
+  let html;
+  if (end !== -1 && end > start) {
+    html = cleaned.slice(start, end + "</html>".length);
+  } else {
+    // Truncated response — take the remainder and repair it.
+    html = cleaned.slice(start);
+    html = repairTruncatedHtml(html);
+  }
+
+  return html.trim();
+}
+
+/**
+ * Repair a truncated HTML document so it still renders in an iframe.
+ * Closes any unclosed <style>, <script>, <body> and <html> tags.
+ */
+function repairTruncatedHtml(html) {
+  let repaired = html.trimEnd();
+
+  const lower = repaired.toLowerCase();
+
+  // Close an unclosed <script> tag first (most likely to break rendering).
+  if (/<script[\s>]/i.test(repaired) && !/<\/script>\s*$/i.test(repaired)) {
+    repaired += "\n</script>";
+  }
+
+  // Close an unclosed <style> tag.
+  if (/<style[\s>]/i.test(repaired) && !/<\/style>\s*$/i.test(repaired)) {
+    repaired += "\n</style>";
+  }
+
+  // Close <body> and <html> if missing.
+  if (
+    /<body[\s>]/i.test(repaired) &&
+    !/<\/body>\s*(<\/html>)?\s*$/i.test(repaired)
+  ) {
+    repaired += "\n</body>";
+  }
+  if (/<html[\s>]/i.test(repaired) && !/<\/html>\s*$/i.test(repaired)) {
+    repaired += "\n</html>";
+  }
+
+  // If there was never an <html> wrapper at all, wrap the fragment.
+  if (!/<html[\s>]/i.test(repaired)) {
+    repaired = `<!DOCTYPE html>\n<html lang="en">\n<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>\n<body>\n${repaired}\n</body>\n</html>`;
+  }
+
+  return repaired;
 }
 
 function decodeJsonEscapes(value) {
@@ -110,11 +163,17 @@ export function cleanGeneratedHtml(code) {
 }
 
 export function parseAIWebsiteResponse(text) {
+  if (typeof text !== "string" || !text.trim()) {
+    throw new Error("AI response is empty");
+  }
+
   let parsed;
 
   try {
     parsed = extractJsonObject(text);
   } catch (jsonError) {
+    // Not valid JSON — try to salvage an HTML document directly from
+    // the raw text (handles plain-HTML or truncated responses).
     const code = extractHtmlDocument(text);
 
     return {
@@ -127,17 +186,34 @@ export function parseAIWebsiteResponse(text) {
     throw new Error("AI JSON response must be an object");
   }
 
-  if (typeof parsed.message !== "string" || !parsed.message.trim()) {
-    throw new Error("AI JSON response is missing a message string");
+  // The model may return a valid JSON object but with a truncated "code"
+  // string (response cut off mid-HTML). Salvage whatever HTML is present.
+  const rawCode =
+    typeof parsed.code === "string" ? parsed.code : String(parsed.code || "");
+  const message =
+    typeof parsed.message === "string" && parsed.message.trim()
+      ? parsed.message.trim()
+      : "Website generated successfully";
+
+  // If the code field contains an HTML document (even truncated), extract
+  // and repair it. Otherwise fall back to scanning the whole response.
+  let code = "";
+  if (rawCode.trim()) {
+    try {
+      code = extractHtmlDocument(rawCode);
+    } catch {
+      code = cleanGeneratedHtml(rawCode);
+    }
   }
 
-  if (typeof parsed.code !== "string" || !parsed.code.trim()) {
-    throw new Error("AI JSON response is missing a code string");
+  if (!code.trim()) {
+    // Last resort: scan the entire original response for HTML.
+    code = extractHtmlDocument(text);
   }
 
   return {
-    message: parsed.message.trim(),
-    code: cleanGeneratedHtml(parsed.code),
+    message,
+    code: cleanGeneratedHtml(code),
   };
 }
 
@@ -314,15 +390,15 @@ async function tryModel(model, apiKey, clientPrompt) {
           {
             role: "system",
             content:
-              'Return only valid JSON with exactly two string fields: "message" and "code". The code value must contain one complete HTML document. Do not include markdown, prose, reasoning, or text outside the JSON object.',
+              'You are a senior React 18 + Next.js frontend engineer. Generate a premium, production-grade single-page website using React 18 (functional components + hooks), written in Next.js App-Router style, delivered as ONE self-contained HTML file. The HTML must include CDN scripts for React 18, ReactDOM 18, Babel Standalone (for in-browser JSX), and Tailwind CSS. Write the React app inside a single <script type="text/babel"> tag and mount it with ReactDOM.createRoot(document.getElementById("root")).render(<App />). Return ONLY valid JSON with exactly two string fields: "message" and "code". The code value must contain ONE complete HTML document starting with <!DOCTYPE html> and ending with </html>. Do not include markdown fences, prose, reasoning, or any text outside the JSON object. Keep the code compact (no excessive blank lines) so it fits within the token limit. Always finish the document with </html>.',
           },
           {
             role: "user",
-            content: `You are a web development assistant. Your task is to generate HTML, CSS, and JavaScript code for the user's request. The code should be clean, modern, and responsive. Do not include any explanations or comments in the code. strictly follow the rules and style provided by the user.\n\n${clientPrompt}`,
+            content: `You are a React 18 + Next.js web development assistant. Your task is to generate a complete, self-contained HTML file containing a React 18 application (using CDN React, ReactDOM, Babel, and Tailwind CSS) for the user's request. The code should be clean, modern, fully responsive, and use functional components with hooks. Do not include any explanations or comments outside the code. Strictly follow the rules and style provided by the user.\n\n${clientPrompt}`,
           },
         ],
         temperature: 0.2,
-        max_tokens: 8192,
+        max_tokens: 16000,
       }),
     },
     FETCH_TIMEOUT_MS,

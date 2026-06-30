@@ -5,13 +5,22 @@ import AuthRouter from "./routes/auth.router.js";
 import UserRouter from "./routes/user.router.js";
 import WebsiteRouter from "./routes/website.router.js";
 import BillingRouter from "./routes/billing.router.js";
+import AgentRouter from "./routes/agent.router.js";
 import { stripeWebhook } from "./controllers/billing.controller.js";
 import cookieParser from "cookie-parser";
 import cors from "cors";
 
 // Fail fast if required environment variables are missing.
 // This prevents silent 500s on /api/auth/google and /api/user/me.
-const REQUIRED_ENV = ["JWT_SECRET", "MONGODB_URL"];
+// GOOGLE_OAUTH_* are required for the raw Google OAuth redirect flow used by
+// LoginModal.jsx → GET /api/auth/google/callback.
+const REQUIRED_ENV = [
+  "JWT_SECRET",
+  "MONGODB_URL",
+  "GOOGLE_OAUTH_CLIENT_ID",
+  "GOOGLE_OAUTH_CLIENT_SECRET",
+  "GOOGLE_OAUTH_REDIRECT_URI",
+];
 const missingEnv = REQUIRED_ENV.filter((key) => !process.env[key]);
 if (missingEnv.length) {
   console.error(
@@ -47,6 +56,7 @@ app.use("/api/auth", AuthRouter);
 app.use("/api/user", UserRouter);
 app.use("/api/website", WebsiteRouter);
 app.use("/api/billing", BillingRouter);
+app.use("/api/agent", AgentRouter);
 
 app.use((err, req, res, next) => {
   const { message = "Something went wrong ", statusCode = 500 } = err;

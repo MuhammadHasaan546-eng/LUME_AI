@@ -13,6 +13,7 @@
     "@fontsource-variable/inter": "^5.2.8",
     "@monaco-editor/react": "^4.7.0",
     "@reduxjs/toolkit": "^2.11.2",
+    "@studio-freight/lenis": "^1.0.42",
     "@tailwindcss/vite": "^4.2.2",
     "@webcontainer/api": "^1.6.4",
     "axios": "^1.14.0",

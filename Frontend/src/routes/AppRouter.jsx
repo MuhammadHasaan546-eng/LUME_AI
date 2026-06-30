@@ -29,84 +29,87 @@ import LumeNotFound from "@/pages/public/LumeNotFound";
 //   </div>
 // );
 
+const router = createBrowserRouter([
+  {
+    HydrateFallback: LumeMotionLoader,
+    children: [
+      {
+        path: "/",
+        element: <Layout />,
+        children: [
+          {
+            index: true,
+            element: <Home />,
+            loader: authLoader,
+          },
+          {
+            path: "features",
+            element: <Features />,
+            loader: authLoader,
+          },
+          {
+            path: "showcase",
+            element: <Showcase />,
+            loader: authLoader,
+          },
+          {
+            path: "docs",
+            element: <Docs />,
+            loader: authLoader,
+          },
+          {
+            path: "pricing",
+            element: <Price />,
+            loader: authLoader,
+          },
+          {
+            path: "/login",
+            element: (
+              <CheckAuth requireAuth={false}>
+                <LoginModal defaultOpen={true} />
+              </CheckAuth>
+            ),
+          },
+        ],
+      },
+      {
+        path: "dashboard",
+        element: (
+          <CheckAuth>
+            <Dashboard />
+          </CheckAuth>
+        ),
+        loader: authLoader,
+      },
+      {
+        path: "generate",
+        element: (
+          <CheckAuth>
+            <GeneratePage />
+          </CheckAuth>
+        ),
+        loader: authLoader,
+      },
+      {
+        path: "editor/:codeId",
+        element: (
+          <CheckAuth>
+            <EditorPage />
+          </CheckAuth>
+        ),
+        loader: authLoader,
+      },
+      {
+        path: "live-site/:websiteId",
+        element: <LiveSite />,
+        loader: authLoader,
+      },
+      { path: "*", element: <LumeNotFound /> },
+    ],
+  },
+]);
+
 export const AppRouter = () => {
-  const router = createBrowserRouter([
-    {
-      path: "/",
-      element: <Layout />,
-      HydrateFallback: LumeMotionLoader,
-      children: [
-        {
-          index: true,
-          element: <Home />,
-          loader: authLoader,
-        },
-        {
-          path: "features",
-          element: <Features />,
-          loader: authLoader,
-        },
-        {
-          path: "showcase",
-          element: <Showcase />,
-          loader: authLoader,
-        },
-        {
-          path: "docs",
-          element: <Docs />,
-          loader: authLoader,
-        },
-        {
-          path: "pricing",
-          element: <Price />,
-          loader: authLoader,
-        },
-        {
-          path: "/login",
-          element: (
-            <CheckAuth requireAuth={false}>
-              <LoginModal />
-            </CheckAuth>
-          ),
-        },
-      ],
-    },
-    {
-      path: "dashboard",
-      element: (
-        <CheckAuth>
-          <Dashboard />
-        </CheckAuth>
-      ),
-      loader: authLoader,
-    },
-    {
-      path: "generate",
-      element: (
-        <CheckAuth>
-          <GeneratePage />
-        </CheckAuth>
-      ),
-      loader: authLoader,
-    },
-    {
-      path: "editor/:codeId",
-      element: (
-        <CheckAuth>
-          <EditorPage />
-        </CheckAuth>
-      ),
-      loader: authLoader,
-    },
-    {
-      path: "live-site/:websiteId",
-      element: <LiveSite />,
-      loader: authLoader,
-    },
-
-    { path: "*", element: <LumeNotFound /> },
-  ]);
-
   return (
     <RouterProvider router={router} fallbackElement={<LumeMotionLoader />} />
   );

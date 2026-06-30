@@ -14,8 +14,9 @@ export const login = createAsyncThunk(
         withCredentials: true,
       });
 
-      if (res.data.token) {
-        localStorage.setItem("token", res.data.token);
+      // Backend wraps response as: { data: { token, user }, ... }
+      if (res.data.data?.token) {
+        localStorage.setItem("token", res.data.data.token);
       }
 
       return res.data;

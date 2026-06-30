@@ -1,22 +1,40 @@
-// Import the functions you need from the SDKs you need
 import { initializeApp } from "firebase/app";
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
+import { getAnalytics, isSupported } from "firebase/analytics";
 import { getAuth, GoogleAuthProvider } from "firebase/auth";
 
-// Your web app's Firebase configuration
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: "lume-ad7ee.firebaseapp.com",
-  projectId: "lume-ad7ee",
-  storageBucket: "lume-ad7ee.firebasestorage.app",
-  messagingSenderId: "546891420283",
-  appId: "1:546891420283:web:68ed607aa2b1a0b867c8de",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID,
 };
 
-// Initialize Firebase
+if (!firebaseConfig.apiKey) {
+  console.error("[Firebase] VITE_FIREBASE_API_KEY is missing in .env");
+}
+
+console.info(
+  "[Firebase] Resolved config ->",
+  "projectId:",
+  firebaseConfig.projectId,
+  "| authDomain:",
+  firebaseConfig.authDomain,
+);
+
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const provider = new GoogleAuthProvider();
 
-export { app, auth, provider };
+let analytics = null;
+isSupported()
+  .then((supported) => {
+    if (supported) {
+      analytics = getAnalytics(app);
+    }
+  })
+  .catch((err) => console.error("Firebase Analytics init failed:", err));
+
+export { app, auth, provider, analytics };
