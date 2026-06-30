@@ -1,7 +1,9 @@
 import axios from "axios";
 import { createAsyncThunk } from "@reduxjs/toolkit";
 
-const BASE_URL = import.meta.env.VITE_BASE_URL || "http://localhost:3000";
+// Empty string => requests are same-origin relative (/api/...) and go
+// through the Vite dev-server proxy, avoiding cert/CORS issues.
+const BASE_URL = import.meta.env.VITE_BASE_URL || "";
 
 const WEBSITE_API_URL = `${BASE_URL}/api/website`;
 

@@ -21,18 +21,6 @@ function mapAIServiceError(error) {
   return new ExpressError(message, 502);
 }
 
-// export const generateDemo = async (req, res) => {
-//   try {
-//     const aiResponse = await generateAIResponse("Hellow");
-//     if (!aiResponse) {
-//       throw new ExpressError("AI response not found", 404);
-//     }
-//     console.log(aiResponse);
-//     return res.status(200).json(new ApiResponse(200, aiResponse));
-//   } catch (error) {
-//     console.log("api responsive error", error);
-//   }
-// };
 const masterPrompt = `
 YOU ARE A PRINCIPAL FRONTEND ARCHITECT
 AND A SENIOR UI/UX ENGINEER

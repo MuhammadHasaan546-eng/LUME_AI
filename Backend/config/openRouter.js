@@ -77,7 +77,7 @@ function extractHtmlDocument(text) {
     html = cleaned.slice(start);
     html = repairTruncatedHtml(html);
   }
-
+  console.log("html", html);
   return html.trim();
 }
 

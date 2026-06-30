@@ -1,38 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { WebContainer, configureAPIKey } from "@webcontainer/api";
 
-/**
- * useWebContainer
- * ---------------
- * Manages a StackBlitz WebContainer instance for live previewing
- * generated HTML/CSS/JS code inside an in-browser Node runtime.
- *
- * Responsibilities:
- *  - Boot the WebContainer once (using the Vite env API key).
- *  - Mount a minimal project tree (package.json + server + index.html).
- *  - Start a dev server and expose its URL.
- *  - Allow updating the `index.html` file on the fly without rebooting.
- *  - Read the live file-system tree for display in the editor sidebar.
- *  - Run terminal commands (spawn) and stream their output.
- *  - Gracefully degrade: if WebContainers cannot boot (missing/invalid API
- *    key, unregistered referrer domain, unsupported browser, etc.) the hook
- *    switches to a "sandbox" mode so the editor can keep rendering the
- *    preview via an iframe srcDoc fallback instead of crashing.
- *
- * Returns:
- *  - status:        "idle" | "booting" | "mounting" | "running" | "sandbox" | "error"
- *  - previewUrl:    string | null  (the URL to load in an <iframe>)
- *  - error:         string | null
- *  - fallback:      boolean          (true when running in degraded srcDoc mode)
- *  - fileTree:      array            (live file-system tree from the container)
- *  - terminalLines: array            (streamed terminal output entries)
- *  - isCommandRunning: boolean       (true while a terminal command is executing)
- *  - boot(code):    boots the container with initial HTML.
- *  - updatePreview(code): writes new HTML to the container and refreshes.
- *  - refreshFileTree(): re-reads the container file system.
- *  - runCommand(cmd, args): spawns a terminal command and streams output.
- *  - clearTerminal(): clears the terminal output buffer.
- */
 export default function useWebContainer() {
   const [status, setStatus] = useState("idle");
   const [previewUrl, setPreviewUrl] = useState(null);
@@ -382,15 +350,8 @@ server.listen(3000, () => {
     ],
   );
 
-  /**
-   * Update the preview by overwriting index.html and reloading the iframe.
-   * If the container hasn't booted yet, it boots first.
-   * In sandbox fallback mode this is a no-op (the editor renders srcDoc).
-   */
   const updatePreview = useCallback(
     async (html) => {
-      // In sandbox fallback mode the editor renders via srcDoc directly,
-      // so there is nothing to write to a container.
       if (fallback) return;
 
       const container = containerRef.current;
@@ -402,12 +363,11 @@ server.listen(3000, () => {
 
       try {
         await container.fs.writeFile("index.html", html);
-        // The static server reads the file on every request, so a simple
-        // URL cache-bust forces the iframe to reload fresh content.
+
         setPreviewUrl((prev) =>
           prev ? `${prev.split("?")[0]}?t=${Date.now()}` : prev,
         );
-        // Refresh the file tree so the sidebar reflects the latest write.
+
         await refreshFileTree();
       } catch (err) {
         console.error("WebContainer update error:", err);
