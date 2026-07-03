@@ -43,8 +43,53 @@ function extractJsonObject(text) {
       throw new Error("AI response does not contain a JSON object");
     }
 
-    return JSON.parse(cleaned.slice(start, end + 1));
+    try {
+      return JSON.parse(cleaned.slice(start, end + 1));
+    } catch {
+      const rawCode = extractJsonStringField(cleaned, "code");
+      if (rawCode) {
+        return {
+          message:
+            extractJsonStringField(cleaned, "message") ||
+            "Website generated successfully",
+          code: decodeJsonEscapes(rawCode),
+        };
+      }
+      throw new Error("AI response does not contain a parseable JSON object");
+    }
   }
+}
+
+function extractJsonStringField(text, fieldName) {
+  const marker = `"${fieldName}"`;
+  const markerIndex = text.indexOf(marker);
+  if (markerIndex === -1) return "";
+
+  const colonIndex = text.indexOf(":", markerIndex + marker.length);
+  if (colonIndex === -1) return "";
+
+  let quoteIndex = colonIndex + 1;
+  while (/\s/.test(text[quoteIndex] || "")) quoteIndex += 1;
+  if (text[quoteIndex] !== '"') return "";
+
+  let result = "";
+  let escaped = false;
+  for (let i = quoteIndex + 1; i < text.length; i += 1) {
+    const char = text[i];
+    if (escaped) {
+      result += `\\${char}`;
+      escaped = false;
+      continue;
+    }
+    if (char === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (char === '"') return result;
+    result += char;
+  }
+
+  return result;
 }
 
 function extractHtmlDocument(text) {
@@ -77,7 +122,6 @@ function extractHtmlDocument(text) {
     html = cleaned.slice(start);
     html = repairTruncatedHtml(html);
   }
-  console.log("html", html);
   return html.trim();
 }
 
@@ -405,7 +449,7 @@ async function tryModel(model, apiKey, clientPrompt) {
           {
             role: "system",
             content:
-              'You are a senior React 18 + Next.js frontend engineer. Generate a premium, production-grade single-page website using React 18 (functional components + hooks), written in Next.js App-Router style, delivered as ONE self-contained HTML file. The HTML must include CDN scripts for React 18, ReactDOM 18, Babel Standalone (for in-browser JSX), and Tailwind CSS. Write the React app inside a single <script type="text/babel"> tag and mount it with ReactDOM.createRoot(document.getElementById("root")).render(<App />). Return ONLY valid JSON with exactly two string fields: "message" and "code". The code value must contain ONE complete HTML document starting with <!DOCTYPE html> and ending with </html>. Do not include markdown fences, prose, reasoning, or any text outside the JSON object. Keep the code compact (no excessive blank lines) so it fits within the token limit. Always finish the document with </html>.',
+              'You are a senior React 18 + Next.js frontend engineer. Generate a premium, production-grade single-page website using React 18 (functional components + hooks), written in Next.js App-Router style, delivered as ONE self-contained HTML file. The HTML must include CDN scripts for React 18, ReactDOM 18, Babel Standalone (for in-browser JSX), and Tailwind CSS. Write the React app inside a single <script type="text/babel"> tag and mount it with ReactDOM.createRoot(document.getElementById("root")).render(<App />). Return ONLY valid JSON with exactly two string fields: "message" and "code". The code value must contain ONE complete HTML document starting with <!DOCTYPE html> and ending with </html>. Do not describe your plan, do not say "Now the React code", do not include markdown fences, prose, reasoning, comments outside the HTML, or any text outside the JSON object. Keep the code compact (no excessive blank lines) so it fits within the token limit. Always finish the document with </html>.',
           },
           {
             role: "user",

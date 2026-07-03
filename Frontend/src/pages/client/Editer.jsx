@@ -1,5 +1,5 @@
-import React, { useMemo, useState, useEffect, useRef } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import React, { useState, useEffect, useRef } from "react";
+import { motion as framerMotion, AnimatePresence } from "framer-motion";
 import {
   ArrowLeft,
   Sparkles,
@@ -38,6 +38,9 @@ import { setThemePreference } from "@/store/theme";
 import useWebContainer from "@/hooks/useWebContainer";
 import { defaultHtmlTemplate } from "@/templates/defaultTemplate";
 
+const MotionButton = framerMotion.button;
+const MotionDiv = framerMotion.div;
+
 const EditorPage = () => {
   const navigate = useNavigate();
   const { codeId } = useParams();
@@ -48,9 +51,6 @@ const EditorPage = () => {
   );
   const { selectedTheme, resolvedTheme } = useSelector((state) => state.theme);
   const isDark = resolvedTheme === "dark";
-  const controlClass =
-    "bg-card border-border text-muted-foreground hover:border-primary/30 hover:text-foreground";
-
   // Core Data States
   const [code, setCode] = useState(latestCode || defaultHtmlTemplate);
   const [prompt, setPrompt] = useState("");
@@ -68,9 +68,8 @@ const EditorPage = () => {
   const [mobileActiveView, setMobileActiveView] = useState("editor");
 
   // WebContainer-powered live preview (gracefully degrades to a srcDoc
-  // sandbox when the runtime is unavailable — e.g. invalid API key or
-  // unregistered referrer domain). Also exposes the live file tree and
-  // an interactive terminal backed by the in-browser Node runtime.
+  // sandbox when the runtime is unavailable, and wraps React/Next component
+  // code in a runnable preview document instead of rendering it as raw HTML.
   const {
     status: wcStatus,
     previewUrl: wcPreviewUrl,
@@ -93,29 +92,10 @@ const EditorPage = () => {
 
   // Sync state with background data stream
   useEffect(() => {
-    if (latestCode) {
-      setCode(latestCode);
-    }
+    if (!latestCode) return undefined;
+    const syncCode = window.setTimeout(() => setCode(latestCode), 0);
+    return () => window.clearTimeout(syncCode);
   }, [latestCode]);
-
-  // Boot the WebContainer once we have initial code. The hook itself
-  // handles graceful degradation to sandbox mode, so a failed boot no
-  // longer blocks the editor.
-  useEffect(() => {
-    if (code && wcStatus === "idle") {
-      bootWebContainer(code);
-    }
-  }, [code, wcStatus, bootWebContainer]);
-
-  // Debounced live-update: write code to the container on every change.
-  // Skipped in sandbox fallback mode (the iframe renders srcDoc directly).
-  useEffect(() => {
-    if (wcFallback || wcStatus !== "running" || !code) return;
-    const debounce = setTimeout(() => {
-      updateWebContainerPreview(code);
-    }, 600);
-    return () => clearTimeout(debounce);
-  }, [code, wcStatus, wcFallback, updateWebContainerPreview]);
 
   // Surface only non-recoverable WebContainer errors as toasts. Recoverable
   // errors (referrer / API key) silently fall back to sandbox preview.
@@ -214,12 +194,322 @@ const EditorPage = () => {
 
   const conversations = currentWebsite?.conversations || [];
 
-  const handleThemeChange = (theme) => {
-    dispatch(setThemePreference(theme));
+  const stripCodeFence = (value = "") =>
+    String(value)
+      .trim()
+      .replace(/^```(?:html|jsx?|tsx?|typescript|javascript|json)?\s*/i, "")
+      .replace(/\s*```$/i, "")
+      .trim();
+
+  const getFirstFencedCodeBlock = (value = "") => {
+    const match = String(value).match(
+      /```(?:html|jsx?|tsx?|typescript|javascript|json)?\s*([\s\S]*?)\s*```/i,
+    );
+    return match?.[1] ? match[1].trim() : "";
   };
 
-  const toggleTheme = () => {
-    handleThemeChange(isDark ? "light" : "dark");
+  const sliceToRenderableCode = (value = "") => {
+    const source = String(value || "").trim();
+    if (!source) return "";
+
+    const startPatterns = [
+      /<!doctype\s+html/i,
+      /<html[\s>]/i,
+      /["']use client["'];?/i,
+      /import\s+[^;]+\s+from\s+["'][^"']+["'];?/i,
+      /export\s+default\s+(?:function\s+)?[A-Z][\w]*/,
+      /(?:function|const|let|var|class)\s+[A-Z][\w]*/,
+      /<([A-Z][\w]*|[a-z]+)[\s/>]/,
+    ];
+
+    const starts = startPatterns
+      .map((pattern) => source.search(pattern))
+      .filter((index) => index >= 0);
+    if (!starts.length) return source;
+
+    let sliced = source.slice(Math.min(...starts)).trim();
+    const endMarkers = ["</html>", "export default", ");", "};", "}"];
+    const htmlEnd = sliced.toLowerCase().lastIndexOf("</html>");
+    if (htmlEnd >= 0) return sliced.slice(0, htmlEnd + "</html>".length).trim();
+
+    const narrativeStart = sliced.search(
+      /\n\s*(?:Now\b|Next\b|Then\b|Here(?:'s| is)\b|This\b|Explanation\b|Note\b|We need\b|I\b|The code\b)/i,
+    );
+    if (narrativeStart > 0) {
+      const beforeNarrative = sliced.slice(0, narrativeStart).trim();
+      if (endMarkers.some((marker) => beforeNarrative.endsWith(marker))) {
+        sliced = beforeNarrative;
+      }
+    }
+
+    return sliced.trim();
+  };
+
+  const isHtmlDocument = (value = "") =>
+    /<!doctype html>|<html[\s>]/i.test(value);
+
+  const isReactComponentSource = (value = "") => {
+    const source = String(value || "");
+    return (
+      /from\s+["']react["']|from\s+["']lucide-react["']/i.test(source) ||
+      /export\s+default\s+(function\s+)?[A-Z][\w]*/.test(source) ||
+      /(?:function|const)\s+[A-Z][\w]*\s*(?:=|\()/.test(source) ||
+      /\bclassName\s*=|\bon[A-Z][A-Za-z]+\s*=|<>/.test(source)
+    );
+  };
+
+  const isHtmlLike = (value = "") =>
+    isHtmlDocument(value) ||
+    (!isReactComponentSource(value) &&
+      /<(head|body|main|section|div|script|style|nav|header|footer)[\s>]/i.test(
+        value,
+      ));
+
+  const getEditorLanguage = (value = "") => {
+    const source = extractRenderableCode(value);
+    if (isHtmlLike(source)) return "html";
+    if (
+      /import\s+type|interface\s+\w+|type\s+\w+\s*=|:\s*[A-Za-z][\w<>[\], |]*(?=[,)=;])/.test(
+        source,
+      )
+    ) {
+      return "typescript";
+    }
+    return "javascript";
+  };
+
+  const buildComponentPreviewDocument = (source = "") => {
+    const lucideBindings = [];
+    const lucideImportRegex =
+      /import\s*{([^}]+)}\s*from\s*["']lucide-react["'];?/g;
+    let match;
+
+    while ((match = lucideImportRegex.exec(source)) !== null) {
+      match[1]
+        .split(",")
+        .map((name) => name.trim())
+        .filter(Boolean)
+        .forEach((name) => {
+          const [imported, alias] = name
+            .split(/\s+as\s+/i)
+            .map((part) => part.trim());
+          lucideBindings.push(alias ? `${imported}: ${alias}` : imported);
+        });
+    }
+
+    const componentName =
+      source.match(/export\s+default\s+function\s+([A-Z][\w]*)/)?.[1] ||
+      source.match(/function\s+([A-Z][\w]*)\s*\(/)?.[1] ||
+      source.match(/const\s+([A-Z][\w]*)\s*[:=]/)?.[1] ||
+      source.match(/export\s+default\s+([A-Z][\w]*)/)?.[1] ||
+      "PreviewComponent";
+
+    const reactImportToBinding = (_all, hooks = "") => {
+      const hookNames = hooks
+        .split(",")
+        .map((hook) => hook.trim())
+        .filter(Boolean);
+      return hookNames.length
+        ? `const { ${hookNames.join(", ")} } = React;`
+        : "";
+    };
+
+    let executableCode = sliceToRenderableCode(source)
+      .replace(/^\s*["']use client["'];?\s*/m, "")
+      .replace(/<!doctype html>[\s\S]*?<body[^>]*>/i, "")
+      .replace(/<\/?(?:html|head|body)[^>]*>/gi, "")
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "")
+      .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "")
+      .replace(lucideImportRegex, "")
+      .replace(
+        /import\s+React(?:\s*,\s*{([^}]+)})?\s+from\s*["']react["'];?/g,
+        reactImportToBinding,
+      )
+      .replace(
+        /import\s*{([^}]+)}\s*from\s*["']react["'];?/g,
+        reactImportToBinding,
+      )
+      .replace(/import\s+[^;]+;?/g, "")
+      .replace(/export\s+default\s+function\s+/, "function ")
+      .replace(/export\s+default\s+([A-Z][\w]*);?/g, "")
+      .replace(/export\s+{[^}]+};?/g, "")
+      .replace(/export\s+(const|let|var|function|class)\s+/g, "$1 ")
+      .replace(
+        /(?:^|\n)\s*(?:Now\b|Next\b|Then\b|Here(?:'s| is)\b|This\b|Explanation\b|Note\b|We need\b|I\b|The code\b)[^\n]*(?:\n|$)[\s\S]*$/i,
+        "",
+      )
+      .replace(/<\/script/gi, "<\\/script")
+      .trim();
+
+    if (
+      !new RegExp(`(?:function|const|class)\\s+${componentName}\\b`).test(
+        executableCode,
+      )
+    ) {
+      executableCode += `\nconst ${componentName} = () => <div className="min-h-screen grid place-items-center bg-neutral-950 text-white">Preview component not found.</div>;`;
+    }
+
+    const lucideBinding = lucideBindings.length
+      ? `const { ${lucideBindings.join(", ")} } = window.lucideReact || {};`
+      : "";
+
+    const babelSource = [
+      "const { useEffect, useMemo, useRef, useState, useCallback } = React;",
+      lucideBinding,
+      executableCode,
+      `ReactDOM.createRoot(document.getElementById("root")).render(<${componentName} />);`,
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    return `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <base href="about:srcdoc" />
+    <title>Lume React Preview</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin="anonymous" src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin="anonymous" src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script crossorigin="anonymous" src="https://unpkg.com/lucide-react@0.321.0/dist/umd/lucide-react.js"></script>
+    <script crossorigin="anonymous" src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <style>body{margin:0;font-family:Inter,ui-sans-serif,system-ui,sans-serif;}#root{min-height:100vh;}</style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="text/babel" data-presets="env,react,typescript">${babelSource}</script>
+  </body>
+</html>`;
+  };
+
+  const extractRenderableCode = (value = "") => {
+    let source = getFirstFencedCodeBlock(value) || stripCodeFence(value);
+    if (!source) return "";
+
+    for (let depth = 0; depth < 3; depth += 1) {
+      const candidate = source.trim();
+      if (!candidate || !/^(?:["'{[])/.test(candidate)) break;
+
+      try {
+        const parsed = JSON.parse(candidate);
+        const nextSource =
+          typeof parsed === "string"
+            ? parsed
+            : parsed?.code || parsed?.html || parsed?.component;
+
+        if (
+          typeof nextSource !== "string" ||
+          nextSource.trim() === source.trim()
+        ) {
+          break;
+        }
+
+        source = stripCodeFence(nextSource);
+      } catch {
+        break;
+      }
+    }
+
+    if (!source.includes("\n") && /\\n|\\t|\\"|\\'/.test(source)) {
+      source = source
+        .replace(/\\n/g, "\n")
+        .replace(/\\t/g, "\t")
+        .replace(/\\"/g, '"')
+        .replace(/\\'/g, "'");
+    }
+
+    source = sliceToRenderableCode(stripCodeFence(source));
+
+    const htmlStart = source.search(/<!doctype html>|<html[\s>]/i);
+    if (htmlStart !== -1) {
+      const htmlEnd = source.toLowerCase().lastIndexOf("</html>");
+      return htmlEnd !== -1
+        ? source.slice(htmlStart, htmlEnd + "</html>".length).trim()
+        : source.slice(htmlStart).trim();
+    }
+
+    return source.trim();
+  };
+
+  const buildPreviewDocument = (value = "") => {
+    const source = extractRenderableCode(value);
+    if (!source.trim()) return defaultHtmlTemplate;
+    if (isReactComponentSource(source) || !isHtmlLike(source)) {
+      return buildComponentPreviewDocument(source);
+    }
+
+    const sandboxGuard = `
+<base href="about:srcdoc" />
+<script>
+  (function () {
+    function preventUnsafeNavigation(event) {
+      var target = event.target;
+      var link = target && target.closest ? target.closest('a[href]') : null;
+      if (!link) return;
+      var href = link.getAttribute('href') || '';
+      if (!href || href === '#' || href.charAt(0) === '#') return;
+      event.preventDefault();
+    }
+
+    document.addEventListener('click', preventUnsafeNavigation, true);
+    document.addEventListener('submit', function (event) {
+      event.preventDefault();
+    }, true);
+  })();
+</script>`;
+
+    if (/<head[\s>]/i.test(source)) {
+      return source.replace(/<head([^>]*)>/i, `<head$1>${sandboxGuard}`);
+    }
+
+    if (/<body[\s>]/i.test(source)) {
+      return source.replace(
+        /<body([^>]*)>/i,
+        `<head>${sandboxGuard}</head><body$1>`,
+      );
+    }
+
+    return `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    ${sandboxGuard}
+  </head>
+  <body>
+    ${source}
+  </body>
+</html>`;
+  };
+
+  const cleanEditorCode = extractRenderableCode(code);
+  const previewCode = buildPreviewDocument(code);
+  const editorLanguage = getEditorLanguage(code);
+  const activePreviewUrl =
+    !wcFallback && wcStatus === "running" && wcPreviewUrl
+      ? wcPreviewUrl
+      : undefined;
+  const iframeSrcDoc = activePreviewUrl ? undefined : previewCode;
+
+  // Boot the WebContainer after previewCode is initialized.
+  useEffect(() => {
+    if (previewCode && wcStatus === "idle") {
+      bootWebContainer(previewCode);
+    }
+  }, [previewCode, wcStatus, bootWebContainer]);
+
+  // Debounced live-update: write the runnable preview document to the container.
+  useEffect(() => {
+    if (wcFallback || wcStatus !== "running" || !previewCode) return;
+    const debounce = setTimeout(() => {
+      updateWebContainerPreview(previewCode);
+    }, 600);
+    return () => clearTimeout(debounce);
+  }, [previewCode, wcStatus, wcFallback, updateWebContainerPreview]);
+
+  const handleThemeChange = (theme) => {
+    dispatch(setThemePreference(theme));
   };
 
   useEffect(() => {
@@ -310,47 +600,20 @@ const EditorPage = () => {
     });
   };
 
-  const previewCode = useMemo(() => {
-    const sandboxGuard = `
-<base href="about:srcdoc">
-<script>
-  (function () {
-    function preventUnsafeNavigation(event) {
-      var target = event.target;
-      var link = target && target.closest ? target.closest('a[href]') : null;
-      if (!link) return;
-      var href = link.getAttribute('href') || '';
-      if (!href || href === '#' || href.charAt(0) === '#') return;
-      event.preventDefault();
-    }
-
-    document.addEventListener('click', preventUnsafeNavigation, true);
-    document.addEventListener('submit', function (event) {
-      event.preventDefault();
-    }, true);
-  })();
-</script>`;
-
-    if (/<head[\s>]/i.test(code)) {
-      return code.replace(/<head([^>]*)>/i, `<head$1>${sandboxGuard}`);
-    }
-    return `${sandboxGuard}${code}`;
-  }, [code]);
-
   return (
     <div className="h-screen w-full transition-colors duration-500 bg-background text-foreground font-sans flex flex-col overflow-hidden selection:bg-primary/20 antialiased">
       {/* 1. PREMIUM HEADER ACCENTS */}
       <header className="lume-header-accent lume-glass h-14 min-h-[56px] bg-background/60 px-6 flex items-center justify-between border-b border-border/40 sticky top-0 z-50 transition-all duration-300">
         {/* LEFT ACCENTS: BACK NAVIGATION & VIEW SWITCHERS */}
         <div className="flex items-center gap-4">
-          <motion.button
+          <MotionButton
             onClick={() => navigate(-1)}
             whileHover={{ scale: 1.03, x: -1 }}
             whileTap={{ scale: 0.97 }}
             className="p-2 rounded-xl border border-border/60 bg-muted/30 text-muted-foreground transition-all hover:text-foreground hover:bg-muted/80 hover:border-primary/20"
           >
             <ArrowLeft className="w-4 h-4" />
-          </motion.button>
+          </MotionButton>
 
           <div className="h-4 w-[1px] bg-border/60 hidden sm:block" />
 
@@ -577,7 +840,7 @@ const EditorPage = () => {
                     className={`w-4 h-4 ${activeSidebarTab === tab.id ? "text-[#4C7294]" : "text-zinc-400 dark:text-zinc-600 hover:text-zinc-600 dark:hover:text-zinc-400"}`}
                   />
                   {activeSidebarTab === tab.id && (
-                    <motion.div
+                    <MotionDiv
                       layoutId="leftRailInd"
                       className="absolute left-0 w-[2px] h-4 bg-[#4C7294] top-1/2 -translate-y-1/2"
                     />
@@ -591,7 +854,7 @@ const EditorPage = () => {
           <div className="flex-1 flex flex-col h-full overflow-hidden p-4">
             <AnimatePresence mode="wait">
               {activeSidebarTab === "ai" && (
-                <motion.div
+                <MotionDiv
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
@@ -683,11 +946,11 @@ const EditorPage = () => {
                       )}
                     </button>
                   </form>
-                </motion.div>
+                </MotionDiv>
               )}
 
               {activeSidebarTab === "layers" && (
-                <motion.div
+                <MotionDiv
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   className="h-full flex flex-col overflow-hidden"
@@ -731,11 +994,11 @@ const EditorPage = () => {
                       {wcFileTree.length !== 1 ? "s" : ""}
                     </div>
                   )}
-                </motion.div>
+                </MotionDiv>
               )}
 
               {activeSidebarTab === "terminal" && (
-                <motion.div
+                <MotionDiv
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   className="h-full flex flex-col overflow-hidden"
@@ -829,7 +1092,7 @@ const EditorPage = () => {
                       </form>
                     </>
                   )}
-                </motion.div>
+                </MotionDiv>
               )}
             </AnimatePresence>
           </div>
@@ -846,11 +1109,15 @@ const EditorPage = () => {
             <div className="flex items-center gap-2 truncate">
               <Code className="w-3.5 h-3.5 text-[#4C7294]" />
               <span className="text-xs font-mono tracking-wide text-zinc-500 dark:text-zinc-400 truncate">
-                source_matrix/index.html
+                {isHtmlDocument(code)
+                  ? "source_matrix/index.html"
+                  : "source_matrix/app.jsx"}
               </span>
             </div>
             <span className="text-[10px] font-mono text-zinc-400 dark:text-zinc-600 uppercase tracking-wider pr-2 hidden sm:inline">
-              HTML5 / Tailwind CDN
+              {isHtmlDocument(code)
+                ? "HTML5 / Tailwind CDN"
+                : "React / Next Component"}
             </span>
           </div>
 
@@ -858,9 +1125,9 @@ const EditorPage = () => {
           <div className="flex-1 relative overflow-hidden bg-zinc-50/30 dark:bg-[#0A0A0B]">
             <Editor
               height="100%"
-              language="html"
+              language={editorLanguage}
               theme={isDark ? "vs-dark" : "light"}
-              value={code}
+              value={cleanEditorCode}
               onChange={(value) => setCode(value || "")}
               loading={
                 <div className="flex h-full items-center justify-center text-xs font-mono text-zinc-400 dark:text-zinc-600">
@@ -937,7 +1204,7 @@ const EditorPage = () => {
                 isLoading ||
                 wcStatus === "booting" ||
                 wcStatus === "mounting") && (
-                <motion.div
+                <MotionDiv
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
@@ -955,11 +1222,11 @@ const EditorPage = () => {
                         wcStatus !== "mounting")) &&
                       "Syncing Document Sandbox Nodes..."}
                   </span>
-                </motion.div>
+                </MotionDiv>
               )}
             </AnimatePresence>
 
-            <motion.div
+            <MotionDiv
               animate={{
                 width:
                   window.innerWidth < 1024
@@ -977,10 +1244,13 @@ const EditorPage = () => {
                 </div>
               )}
               <iframe
-                src={wcPreviewUrl || undefined}
-                srcDoc={wcPreviewUrl ? undefined : previewCode}
+                key={
+                  activePreviewUrl ? "webcontainer-preview" : "srcdoc-preview"
+                }
+                src={activePreviewUrl}
+                srcDoc={iframeSrcDoc}
                 title="Lume Production Sandbox Engine"
-                sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+                sandbox="allow-scripts allow-same-origin allow-popups allow-forms"
                 className="w-full h-full bg-white border-0"
               />
               {wcFallback && (
@@ -989,7 +1259,7 @@ const EditorPage = () => {
                   Sandbox Preview
                 </div>
               )}
-            </motion.div>
+            </MotionDiv>
           </div>
 
           {/* Footer Engine Status */}
@@ -1009,10 +1279,14 @@ const EditorPage = () => {
               ENGINE: {wcFallback ? "SANDBOX" : wcStatus.toUpperCase()}
             </span>
             <span className="hidden xs:inline">
-              {wcPreviewUrl
-                ? "Live Node Runtime"
+              {activePreviewUrl
+                ? isHtmlLike(cleanEditorCode)
+                  ? "Live HTML Runtime"
+                  : "Live React Runtime"
                 : wcFallback
-                  ? "Sandboxed srcDoc Preview"
+                  ? isHtmlLike(cleanEditorCode)
+                    ? "Sandboxed HTML Preview"
+                    : "Sandboxed React Preview"
                   : "Sandboxed Execution Node"}
             </span>
           </div>

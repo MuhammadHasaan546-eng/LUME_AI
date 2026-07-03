@@ -24,13 +24,12 @@ export default defineConfig({
     // transfer SharedArrayBuffer between the main thread and its worker.
     // Without these headers self.crossOriginIsolated === false and boot()
     // throws: "DataCloneError: SharedArrayBuffer transfer requires
-    // self.crossOriginIsolated".
-    headers: {
-      "Cross-Origin-Opener-Policy": "same-origin",
-      "Cross-Origin-Embedder-Policy": "require-corp",
-      // Allow the WebContainer iframe (served from a different origin) to
-      // be embedded while keeping the page isolated.
-      "Cross-Origin-Resource-Policy": "cross-origin",
+    plugins: [react()],
+    server: {
+      headers: {
+        "Cross-Origin-Opener-Policy": "same-origin",
+        "Cross-Origin-Embedder-Policy": "require-corp",
+      },
     },
     // Proxy /api/* to the backend so the browser never talks directly to
     // https://localhost:3000 (which uses a self-signed cert the browser
