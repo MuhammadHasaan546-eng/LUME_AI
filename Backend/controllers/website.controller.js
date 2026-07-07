@@ -1,7 +1,5 @@
 import generateAIResponse, {
   parseAIWebsiteResponse,
-  cleanGeneratedHtml,
-  decodeJsonEscapes,
 } from "../config/openRouter.js";
 import ExpressError from "../utils/ExpressError.js";
 import ApiResponse from "../utils/ApiResponse.js";
@@ -11,6 +9,8 @@ import User from "../models/User.models.js";
 
 const GENERATE_COST = 50;
 const UPDATE_COST = 25;
+// Saving page data (manual editor edits) is free — it is not an AI call.
+const SAVE_PAGE_DATA_COST = 0;
 
 function mapAIServiceError(error) {
   const message = error?.message || "AI generation failed. Please try again.";
@@ -22,28 +22,25 @@ function mapAIServiceError(error) {
   return new ExpressError(message, 502);
 }
 
+/**
+ * masterPrompt is appended to the user message sent to the AI. The full
+ * pageData schema and section-type rules live in the SYSTEM prompt inside
+ * tryModel() (see Backend/config/openRouter.js). This prompt focuses on the
+ * user's requirement, the quality bar, and the output-format contract.
+ *
+ * The AI must return a JSON object: { message, pageData }. It must NOT return
+ * HTML or React code — the pageData is rendered by a pre-built React component
+ * system on the frontend.
+ */
 const masterPrompt = `
-YOU ARE A PRINCIPAL FRONTEND ARCHITECT
-AND A SENIOR UI/UX ENGINEER
-SPECIALIZED IN REACT 18 + NEXT.JS DESIGN SYSTEMS.
+YOU ARE A PRINCIPAL FRONTEND ARCHITECT AND A SENIOR UI/UX ENGINEER
+SPECIALIZED IN MODERN, CONVERSION-FOCUSED LANDING PAGES.
 
-YOU BUILD HIGH-END, REAL-WORLD, PRODUCTION-GRADE WEBSITES
-USING REACT 18 (FUNCTIONAL COMPONENTS + HOOKS) WRITTEN IN
-NEXT.JS STYLE, DELIVERED AS ONE SELF-CONTAINED HTML FILE THAT
-RUNS IN-BROWSER VIA CDN (React + ReactDOM + Babel + Tailwind).
-
-THE OUTPUT MUST BE CLIENT-DELIVERABLE WITHOUT ANY MODIFICATION.
-
-✔ React 18 (functional components, hooks: useState, useEffect, useRef)
-✔ Next.js App-Router conventions & component thinking
-✔ Tailwind CSS (via CDN) for styling
-✔ Works on ALL screen sizes
-
-❌ NO BUILD STEP REQUIRED (CDN-based, runs instantly)
-❌ NO BASIC SITES
-❌ NO PLACEHOLDERS
-❌ NO LOREM IPSUM
-❌ NO NON-RESPONSIVE LAYOUTS
+You generate STRUCTURED website definitions as a JSON "pageData" object.
+The pageData is the Single Source of Truth — it is rendered by a pre-built
+React component system (Hero, Features, Stats, Gallery, Testimonials,
+Pricing, CTA, Contact). You NEVER output HTML, React code, or markdown.
+You ONLY output a JSON object.
 
 --------------------------------------------------
 USER REQUIREMENT:
@@ -51,152 +48,92 @@ USER REQUIREMENT:
 --------------------------------------------------
 
 GLOBAL QUALITY BAR (NON-NEGOTIABLE)
---------------------------------------------------
-- Premium, modern UI (2026–2027)
-- Professional typography & spacing
-- Clean visual hierarchy
-- Business-ready content (NO lorem ipsum)
-- Smooth transitions & hover effects
-- SPA-style multi-page experience (React state-driven routing)
-- Production-ready, readable code
+- Premium, modern UI (2026–2027 aesthetic)
+- Professional typography, spacing, and visual hierarchy
+- Business-ready, realistic content (NO lorem ipsum, NO placeholders)
+- Fully responsive intent (the component system handles responsiveness,
+  but choose layouts and content that work on mobile, tablet, and desktop)
+- Accessible semantics (the components are pre-built accessible)
 
 --------------------------------------------------
-RESPONSIVE DESIGN (ABSOLUTE REQUIREMENT)
---------------------------------------------------
-THIS WEBSITE MUST BE FULLY RESPONSIVE.
-
-YOU MUST IMPLEMENT:
-
-✔ Mobile-first Tailwind approach (sm:, md:, lg: breakpoints)
-✔ Responsive layout for:
-  - Mobile (<768px)
-  - Tablet (768px–1024px)
-  - Desktop (>1024px)
-
-✔ Use:
-  - Tailwind responsive utilities (grid, flex, gap, etc.)
-  - Relative units (%, rem, vw) where needed
-  - Mobile-first class ordering
-
-✔ REQUIRED RESPONSIVE BEHAVIOR:
-  - Navbar collapses / stacks on mobile (hamburger menu)
-  - Sections stack vertically on mobile
-  - Multi-column layouts become single-column on small screens
-  - Images scale proportionally (w-full h-auto object-cover)
-  - Text remains readable on all devices
-  - No horizontal scrolling on mobile
-  - Touch-friendly buttons on mobile
-
-IF THE WEBSITE IS NOT RESPONSIVE → RESPONSE IS INVALID.
-
---------------------------------------------------
-IMAGES (MANDATORY & RESPONSIVE)
---------------------------------------------------
-- Use high-quality images ONLY from:
-  https://images.unsplash.com/
-- EVERY image URL MUST include:
-  ?auto=format&fit=crop&w=1200&q=80
-
-- Images must:
-  - Be responsive (className="w-full h-auto object-cover")
-  - Resize correctly on mobile
-  - Never overflow containers
-
---------------------------------------------------
-TECHNICAL RULES (VERY IMPORTANT)
---------------------------------------------------
-- Output ONE single HTML file
-- Include in <head> EXACTLY these CDN scripts:
-    * React 18 production UMD (react.development.js or react.production.min.js)
-    * ReactDOM 18 production UMD (react-dom.production.min.js)
-    * Babel Standalone (babel.min.js) for in-browser JSX transform
-    * Tailwind CSS CDN (tailwindcss.com script)
-- Write the React app inside ONE <script type="text/babel"> tag
-- Use functional components + hooks (useState, useEffect, useRef)
-- Mount the app with ReactDOM.createRoot(document.getElementById('root')).render(<App />)
-- NO external CSS files (use Tailwind utility classes + ONE <style> tag for custom CSS only)
-- Use system fonts (or Tailwind font stack)
-- iframe srcdoc compatible (everything self-contained)
-- SPA-style navigation using React state (NO page reloads)
-- No dead UI
-- No broken buttons
-
---------------------------------------------------
-REACT / NEXT.JS STYLE GUIDELINES
---------------------------------------------------
-- Structure the app like a Next.js App Router project:
-    App (root) → Navbar + Page Router + Footer
-- Create separate functional components for each page:
-    Home, About, Services, Contact
-- Use a simple page-state router (e.g. const [page, setPage] = useState('home'))
-- Pass props cleanly; keep components small & reusable
-- Use hooks for interactivity (mobile menu toggle, form state, validation)
-- Active nav state must update based on current page
-- Forms must have React-controlled validation
-- Buttons must show hover + active states (Tailwind transitions)
-- Smooth section/page transitions (CSS transitions or conditional classes)
-
---------------------------------------------------
-SPA VISIBILITY RULE (MANDATORY)
---------------------------------------------------
-- The Home page MUST be visible on initial load (default page state)
-- Pages are switched via React state, NOT CSS display toggling
-- At least ONE page is always rendered
-- Hiding all content is INVALID
-
---------------------------------------------------
-REQUIRED SPA PAGES
---------------------------------------------------
-- Home
-- About
-- Services / Features
-- Contact
-
---------------------------------------------------
-FUNCTIONAL REQUIREMENTS
---------------------------------------------------
-- Navigation switches pages via React state
-- Active nav link is highlighted
-- Contact form uses controlled inputs + JS validation
-- Mobile hamburger menu opens/closes
-- Buttons show hover + active states
-- Smooth section/page transitions
-
---------------------------------------------------
-FINAL SELF-CHECK (MANDATORY)
---------------------------------------------------
-BEFORE RESPONDING, ENSURE:
-
-1. Layout works on mobile, tablet, desktop
-2. No horizontal scroll on mobile
-3. All images are responsive
-4. All sections adapt properly
-5. Tailwind responsive classes are present and used
-6. Navigation works on all screen sizes
-7. Home page is visible without user interaction
-8. React 18 + ReactDOM + Babel + Tailwind CDNs are included
-9. App mounts to #root via ReactDOM.createRoot
-
-IF ANY CHECK FAILS → RESPONSE IS INVALID
+CONTENT RULES
+- Use realistic business content tailored to the user's request
+- Use Unsplash image URLs for ALL images, each ending with:
+    ?auto=format&fit=crop&w=1200&q=80
+- Give every section a unique, descriptive "id" string (e.g. "hero-main",
+  "features-grid", "pricing-plans")
+- Pick the most appropriate section types for the request. A typical
+  landing page uses: hero → features → stats → testimonials → pricing → cta
+  (do NOT use every type if it does not fit; 4–7 sections is ideal)
+- Keep the JSON compact so it fits within the token limit
 
 --------------------------------------------------
 OUTPUT FORMAT (RAW JSON ONLY)
---------------------------------------------------
 {
   "message": "Short professional confirmation sentence",
-  "code": "<FULL VALID HTML DOCUMENT with React 18 + Tailwind CDN>"
+  "pageData": { ...the structured page definition following the schema... }
 }
 
 --------------------------------------------------
 ABSOLUTE RULES
---------------------------------------------------
 - RETURN RAW JSON ONLY
-- NO markdown
-- NO explanations
-- NO extra text
-- FORMAT MUST MATCH EXACTLY
-- IF FORMAT IS BROKEN → RESPONSE IS INVALID
+- NO markdown fences (no \`\`\`)
+- NO explanations, prose, or reasoning
+- NO HTML or React code
+- The "pageData" object MUST follow the exact schema described in the
+  system prompt (schemaVersion, meta, header, sections[], footer)
 `;
+
+/**
+ * Build a URL-safe slug from a title. Falls back to a timestamp if the
+ * title yields no usable characters.
+ */
+function buildSlug(title, suffixId = "") {
+  const base = String(title || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+  const slug = `${base || "site"}-${suffixId || Date.now().toString(36)}`;
+  return slug;
+}
+
+/**
+ * Extract the first usable image URL from a pageData object, scanning
+ * sections in order. Used to generate a lightweight thumbnail for lists
+ * (dashboard / showcase) without sending the full pageData to the client.
+ */
+function extractThumbnailFromPageData(pageData) {
+  if (!pageData || typeof pageData !== "object") return "";
+
+  const sections = Array.isArray(pageData.sections) ? pageData.sections : [];
+
+  for (const section of sections) {
+    const props = (section && section.props) || {};
+
+    // hero / cta may carry a single image object
+    if (props.image && typeof props.image === "object" && props.image.src) {
+      return props.image.src;
+    }
+
+    // gallery / features / testimonials / pricing carry arrays of items
+    const collections = [props.items, props.plans, props.gallery].filter(
+      Array.isArray,
+    );
+
+    for (const collection of collections) {
+      for (const item of collection) {
+        if (!item) continue;
+        if (item.src) return item.src;
+        if (item.avatar) return item.avatar;
+        if (item.image && typeof item.image === "object" && item.image.src) {
+          return item.image.src;
+        }
+      }
+    }
+  }
+
+  return "";
+}
 
 export const generateWebSite = wrapAsync(async (req, res) => {
   const { prompt } = req.body;
@@ -230,67 +167,26 @@ export const generateWebSite = wrapAsync(async (req, res) => {
     throw new ExpressError("AI generation failed. Please try again.", 502);
   }
 
-  let parsedResponse = { message: "Website generated successfully", code: "" };
-
+  // parseAIWebsiteResponse returns { message, pageData } and validates that
+  // pageData.sections is an array. The frontend's normalizePageData() is the
+  // final safety net for individual section shapes.
+  let parsedResponse;
   try {
-    // 1. Pehle normal parsing try karein
     parsedResponse = parseAIWebsiteResponse(aiResponse);
-  } catch (e) {
-    console.warn(
-      "Standard parsing failed, applying robust regex cleanup...",
-      e,
+  } catch (error) {
+    console.warn("AI response parsing failed:", error.message);
+    throw new ExpressError(
+      "AI response was invalid or did not contain a valid pageData object. Please try again.",
+      502,
     );
-
-    // 2. FALLBACK SAFETY: Agar standard parse fail ho jaye, toh raw text se
-    // HTML nikalein. Kabhi bhi raw JSON ko code ke roop mein store na karein.
-    let cleanText = aiResponse.trim();
-
-    // Markdown syntax saaf karein (```json ... ``` ya ```html ... ```)
-    if (cleanText.startsWith("```")) {
-      cleanText = cleanText
-        .replace(/^```[a-zA-Z]*\n/, "")
-        .replace(/\n```$/, "")
-        .trim();
-    }
-
-    // Agar pure JSON text ke andar object form mein code aaya hai
-    if (cleanText.includes('"code":') || cleanText.includes("'code':")) {
-      try {
-        const directJson = JSON.parse(cleanText);
-        if (directJson.code) parsedResponse.code = directJson.code;
-        if (directJson.message) parsedResponse.message = directJson.message;
-      } catch (innerError) {
-        // JSON parse fail ho gaya — code field ko regex se nikalein.
-        // "code": "..." ke baad ki string capture karta hai (truncated bhi).
-        // Yahan raw (un-parsed) text se extract ho raha hai, isliye JSON
-        // escape sequences (\\n, \\", \\/) ko decode karna zaroori hai.
-        const codeMatch = cleanText.match(/"code"\s*:\s*"([\s\S]*?)"\s*[,}]/);
-        if (codeMatch && codeMatch[1]) {
-          parsedResponse.code = decodeJsonEscapes(codeMatch[1]);
-        } else {
-          // Truncated JSON — take everything after "code": " to the end.
-          const partial = cleanText.match(/"code"\s*:\s*"([\s\S]*)/);
-          if (partial && partial[1]) {
-            parsedResponse.code = decodeJsonEscapes(partial[1]);
-          }
-        }
-      }
-    } else {
-      // Agar AI ne bina JSON format ke direct code bhej diya hai
-      parsedResponse.code = cleanText;
-    }
-
-    // Final safety: code ko hamesha clean HTML mein convert karein.
-    // Agar cleanGeneratedHtml ke baad bhi koi HTML document nahi mila,
-    // toh response invalid hai — raw JSON/text kabhi store na karein.
-    parsedResponse.code = cleanGeneratedHtml(parsedResponse.code || "");
   }
 
-  // Double check ke code empty na ho aur ek valid HTML document ho
+  const { message, pageData } = parsedResponse;
+
   if (
-    !parsedResponse.code ||
-    parsedResponse.code.trim() === "" ||
-    !/<html[\s>]/i.test(parsedResponse.code)
+    !pageData ||
+    typeof pageData !== "object" ||
+    !Array.isArray(pageData.sections)
   ) {
     throw new ExpressError(
       "AI response was empty or invalid. Please try again.",
@@ -299,22 +195,17 @@ export const generateWebSite = wrapAsync(async (req, res) => {
   }
 
   try {
-    // Unique slug generator
-    const slug =
-      parsedResponse.message
-        .slice(0, 60)
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-|-$/g, "") +
-      "-" +
-      Date.now().toString(36);
+    const title = String(
+      pageData.meta?.title || message || "Untitled website",
+    ).slice(0, 100);
 
-    // Database mein website entry create karein
+    const slug = buildSlug(title, Date.now().toString(36));
+
     const website = await Website.create({
       user: req.user.id,
-      title: parsedResponse.message.slice(0, 100), // Safety check string length
+      title,
       slug,
-      latestCode: parsedResponse.code,
+      pageData,
       conversations: [
         {
           role: "user",
@@ -322,23 +213,23 @@ export const generateWebSite = wrapAsync(async (req, res) => {
         },
         {
           role: "ai",
-          content: parsedResponse.message,
+          content: message,
         },
       ],
     });
 
-    // Credits minus aur save karein
+    // Deduct credits and persist.
     user.credits -= GENERATE_COST;
     await user.save();
 
-    // Clean JSON Object response bhejain frontend ko
     return res.status(200).json(
       new ApiResponse(
         200,
         {
           websiteId: website._id,
-          latestCode: website.latestCode, // Yeh ab bilkul saaf HTML/Code string hogi
+          pageData: website.pageData,
           title: website.title,
+          slug: website.slug,
           conversations: website.conversations,
           createdAt: website.createdAt,
           credits: user.credits,
@@ -396,93 +287,52 @@ export const updateWebsite = wrapAsync(async (req, res) => {
     throw new ExpressError("AI generation failed. Please try again.", 502);
   }
 
-  // Fallback parsing object initialize karein
-  let parsedResponse = { message: "Website updated successfully", code: "" };
-
+  let parsedResponse;
   try {
-    // 1. Pehle standard JSON parsing check karein
     parsedResponse = parseAIWebsiteResponse(aiResponse);
-  } catch (e) {
-    console.warn(
-      "Standard parsing failed on update, applying robust cleanup...",
-      e,
+  } catch (error) {
+    console.warn("AI response parsing failed on update:", error.message);
+    throw new ExpressError(
+      "AI updated response was invalid or did not contain a valid pageData object. Please try again.",
+      502,
     );
-
-    // 2. FALLBACK LAYER: Markdown aur raw strings saaf karein
-    let cleanText = aiResponse.trim();
-
-    if (cleanText.startsWith("```")) {
-      cleanText = cleanText
-        .replace(/^```[a-zA-Z]*\n/, "")
-        .replace(/\n```$/, "")
-        .trim();
-    }
-
-    // Agar direct code key mojood hai text mein
-    if (cleanText.includes('"code":') || cleanText.includes("'code':")) {
-      try {
-        const directJson = JSON.parse(cleanText);
-        if (directJson.code) parsedResponse.code = directJson.code;
-        if (directJson.message) parsedResponse.message = directJson.message;
-      } catch (innerError) {
-        // JSON parse fail ho gaya — code field ko regex se nikalein.
-        // Raw (un-parsed) text se extract ho raha hai, isliye JSON escape
-        // sequences ko decode karna zaroori hai taaki preview break na ho.
-        const codeMatch = cleanText.match(/"code"\s*:\s*"([\s\S]*?)"\s*[,}]/);
-        if (codeMatch && codeMatch[1]) {
-          parsedResponse.code = decodeJsonEscapes(codeMatch[1]);
-        } else {
-          // Truncated JSON — take everything after "code": " to the end.
-          const partial = cleanText.match(/"code"\s*:\s*"([\s\S]*)/);
-          if (partial && partial[1]) {
-            parsedResponse.code = decodeJsonEscapes(partial[1]);
-          }
-        }
-      }
-    } else {
-      // Agar direct code/HTML string bhej di hai AI ne
-      parsedResponse.code = cleanText;
-    }
-
-    // Final safety: code ko hamesha clean HTML mein convert karein.
-    parsedResponse.code = cleanGeneratedHtml(parsedResponse.code || "");
   }
 
-  // Safety Check: Code khali nahi hona chahiye aur valid HTML document ho
+  const { message, pageData } = parsedResponse;
+
   if (
-    !parsedResponse.code ||
-    parsedResponse.code.trim() === "" ||
-    !/<html[\s>]/i.test(parsedResponse.code)
+    !pageData ||
+    typeof pageData !== "object" ||
+    !Array.isArray(pageData.sections)
   ) {
     throw new ExpressError(
-      "AI updated code was empty or invalid. Please try again.",
+      "AI updated pageData was empty or invalid. Please try again.",
       502,
     );
   }
 
   try {
-    // Website document update karein
-    website.title = parsedResponse.message.slice(0, 100);
-    website.latestCode = parsedResponse.code; // Yeh ab guaranteed clean code/HTML hoga
+    website.title = String(
+      pageData.meta?.title || message || website.title,
+    ).slice(0, 100);
+    website.pageData = pageData;
 
     website.conversations.push(
       { role: "user", content: prompt },
-      { role: "ai", content: parsedResponse.message },
+      { role: "ai", content: message },
     );
     await website.save();
 
-    // User credits deduct karein
     user.credits -= UPDATE_COST;
     await user.save();
 
-    // Sahi clean object frontend ko return karein
     return res.status(200).json(
       new ApiResponse(
         200,
         {
           websiteId: website._id,
+          pageData: website.pageData,
           title: website.title,
-          latestCode: website.latestCode,
           conversations: website.conversations,
           updatedAt: website.updatedAt,
           credits: user.credits,
@@ -498,12 +348,80 @@ export const updateWebsite = wrapAsync(async (req, res) => {
     );
   }
 });
+
+/**
+ * Persist the editor's current pageData (the Single Source of Truth) for a
+ * website. This is NOT an AI call — it is a direct save of the structured
+ * JSON the user has been editing in the canvas. Free of charge.
+ *
+ * Expects: { websiteId, pageData } — validated by savePageDataValidation.
+ */
+export const savePageData = wrapAsync(async (req, res) => {
+  const { websiteId, pageData } = req.body;
+
+  const website = await Website.findById(websiteId);
+  if (!website) {
+    throw new ExpressError("Website not found", 404);
+  }
+
+  if (website.user.toString() !== req.user.id.toString()) {
+    throw new ExpressError("Unauthorized", 403);
+  }
+
+  if (
+    !pageData ||
+    typeof pageData !== "object" ||
+    !Array.isArray(pageData.sections)
+  ) {
+    throw new ExpressError("Invalid pageData payload", 400);
+  }
+
+  website.pageData = pageData;
+
+  // Keep the title in sync with the page's meta title when present.
+  if (pageData.meta && typeof pageData.meta.title === "string") {
+    const nextTitle = pageData.meta.title.trim();
+    if (nextTitle) {
+      website.title = nextTitle.slice(0, 100);
+    }
+  }
+
+  await website.save();
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        websiteId: website._id,
+        pageData: website.pageData,
+        title: website.title,
+        updatedAt: website.updatedAt,
+        credits: SAVE_PAGE_DATA_COST,
+      },
+      "Page data saved successfully",
+    ),
+  );
+});
+
 export const getUserWebsites = wrapAsync(async (req, res) => {
   const websites = await Website.find({ user: req.user.id })
-    .select("title slug latestCode deployed deployedUrl createdAt updatedAt")
+    .select("title slug pageData deployed deployedUrl createdAt updatedAt")
     .sort({ createdAt: -1 });
 
-  return res.status(200).json(new ApiResponse(200, websites));
+  // Map to a lightweight payload — strip the full pageData and expose only a
+  // thumbnail image URL extracted from the sections.
+  const list = websites.map((w) => ({
+    _id: w._id,
+    title: w.title,
+    slug: w.slug,
+    deployed: w.deployed,
+    deployedUrl: w.deployedUrl,
+    thumbnail: extractThumbnailFromPageData(w.pageData),
+    createdAt: w.createdAt,
+    updatedAt: w.updatedAt,
+  }));
+
+  return res.status(200).json(new ApiResponse(200, list));
 });
 
 export const getWebsiteById = wrapAsync(async (req, res) => {
@@ -521,46 +439,23 @@ export const getWebsiteById = wrapAsync(async (req, res) => {
   return res.status(200).json(new ApiResponse(200, website));
 });
 
-// Extract the first <img src="..."> URL from an HTML string.
-// Used to generate a lightweight thumbnail for the public showcase
-// without sending the full (heavy) latestCode to the frontend.
-function extractThumbnailFromCode(html = "") {
-  if (!html) return "";
-
-  // Match the first <img ... src="..." ...> occurrence (single/double quotes)
-  const imgMatch = html.match(/<img[^>]*\ssrc=["']([^"']+)["']/i);
-  if (imgMatch && imgMatch[1]) {
-    return imgMatch[1];
-  }
-
-  // Fallback: try to find an OpenGraph og:image meta tag
-  const ogMatch = html.match(
-    /<meta[^>]+property=["']og:image["'][^>]*content=["']([^"']+)["']/i,
-  );
-  if (ogMatch && ogMatch[1]) {
-    return ogMatch[1];
-  }
-
-  return "";
-}
-
 // PUBLIC endpoint — returns all deployed websites for the showcase gallery.
 // No authentication required. Only lightweight metadata is returned
 // (title, slug, deployedUrl, thumbnail, createdAt + creator name/avatar).
 export const getShowcaseWebsites = wrapAsync(async (req, res) => {
   const websites = await Website.find({ deployed: true })
     .populate("user", "name avatar")
-    .select("title slug deployedUrl latestCode createdAt user")
+    .select("title slug pageData deployedUrl createdAt user")
     .sort({ createdAt: -1 });
 
-  // Map to a lightweight payload — strip the heavy latestCode and
-  // expose only a thumbnail image URL extracted from the HTML.
+  // Map to a lightweight payload — strip the full pageData and expose only a
+  // thumbnail image URL extracted from the sections.
   const showcase = websites.map((w) => ({
     _id: w._id,
     title: w.title,
     slug: w.slug,
     deployedUrl: w.deployedUrl,
-    thumbnail: extractThumbnailFromCode(w.latestCode),
+    thumbnail: extractThumbnailFromPageData(w.pageData),
     createdAt: w.createdAt,
     creator: w.user ? { name: w.user.name, avatar: w.user.avatar } : null,
   }));
@@ -574,7 +469,7 @@ export const getLiveWebsite = wrapAsync(async (req, res) => {
   const { websiteId } = req.params;
 
   const website = await Website.findById(websiteId).select(
-    "title latestCode deployed deployedUrl slug updatedAt",
+    "title pageData deployed deployedUrl slug updatedAt",
   );
   if (!website) {
     throw new ExpressError("Website not found", 404);
@@ -608,7 +503,7 @@ export const deleteWebsite = wrapAsync(async (req, res) => {
 
 export const deployWebsite = wrapAsync(async (req, res) => {
   const { websiteId } = req.params;
-  const { code } = req.body || {};
+  const { pageData } = req.body || {};
 
   const website = await Website.findById(websiteId);
   if (!website) {
@@ -619,19 +514,22 @@ export const deployWebsite = wrapAsync(async (req, res) => {
     throw new ExpressError("Unauthorized", 403);
   }
 
-  if (typeof code === "string" && code.trim()) {
-    website.latestCode = code;
+  // If the client sends the latest pageData at deploy time, persist it so the
+  // live site always reflects the user's most recent editor state.
+  if (
+    pageData &&
+    typeof pageData === "object" &&
+    Array.isArray(pageData.sections)
+  ) {
+    website.pageData = pageData;
+    if (pageData.meta && typeof pageData.meta.title === "string") {
+      const nextTitle = pageData.meta.title.trim();
+      if (nextTitle) website.title = nextTitle.slice(0, 100);
+    }
   }
 
   if (!website.slug) {
-    website.slug =
-      website.title
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-|-$/g, "") +
-      "-" +
-      websiteId +
-      Date.now();
+    website.slug = buildSlug(website.title, websiteId);
   }
 
   const hostingBaseUrl =
@@ -647,7 +545,7 @@ export const deployWebsite = wrapAsync(async (req, res) => {
       {
         websiteId: website._id,
         title: website.title,
-        latestCode: website.latestCode,
+        pageData: website.pageData,
         deployed: website.deployed,
         deployedUrl: website.deployedUrl,
         updatedAt: website.updatedAt,

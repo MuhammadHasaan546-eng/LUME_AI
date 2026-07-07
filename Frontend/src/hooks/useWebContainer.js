@@ -1,6 +1,28 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { WebContainer, configureAPIKey } from "@webcontainer/api";
+import {
+  generateProject,
+  generatePageDataFile,
+} from "../editor/projectGenerator";
 
+/**
+ * useWebContainer
+ * ---------------
+ * Boots a WebContainer, mounts a REAL multi-file Vite project (generated
+ * from the pageData JSON Single Source of Truth), runs `npm install` +
+ * `npm run dev`, and exposes the live preview URL.
+ *
+ * This replaces the old minimal static-file server approach. The generated
+ * project uses real ES modules + a real Vite dev server + Tailwind build
+ * plugin, which is what eliminates all three runtime errors:
+ *   - "import outside a module"  → real <script type="module"> via Vite
+ *   - lucide-react forwardRef     → npm-installed ESM, React always in scope
+ *   - Tailwind CDN warnings       → @tailwindcss/vite build plugin, no CDN
+ *
+ * On recoverable failures (missing API key, no cross-origin isolation), the
+ * hook degrades gracefully to a sandbox fallback so the editor never
+ * white-screens.
+ */
 export default function useWebContainer() {
   const [status, setStatus] = useState("idle");
   const [previewUrl, setPreviewUrl] = useState(null);
@@ -14,61 +36,11 @@ export default function useWebContainer() {
   const bootPromiseRef = useRef(null);
   const serverProcessRef = useRef(null);
   const fallbackReportedRef = useRef(false);
-  const terminalEndRef = useRef(null);
-
-  // Minimal static-file server (no external deps → instant boot).
-  const serverJs = `import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
-import { extname } from 'node:path';
-
-const MIME = {
-  '.html': 'text/html; charset=utf-8',
-  '.css': 'text/css; charset=utf-8',
-  '.js': 'text/javascript; charset=utf-8',
-  '.json': 'application/json; charset=utf-8',
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.svg': 'image/svg+xml',
-  '.ico': 'image/x-icon',
-};
-
-const server = createServer(async (req, res) => {
-  try {
-    const url = new URL(req.url, 'http://localhost');
-    let pathname = url.pathname;
-    if (pathname === '/' || pathname === '') pathname = '/index.html';
-
-    const filePath = '.' + pathname;
-    const body = await readFile(filePath);
-    const mime = MIME[extname(filePath)] || 'application/octet-stream';
-    res.writeHead(200, { 'Content-Type': mime });
-    res.end(body);
-  } catch (err) {
-    res.writeHead(404, { 'Content-Type': 'text/plain' });
-    res.end('Not found: ' + err.message);
-  }
-});
-
-server.listen(3000, () => {
-  console.log('Lume preview server listening on port 3000');
-});
-`;
-
-  const packageJson = JSON.stringify(
-    {
-      name: "lume-preview",
-      type: "module",
-      scripts: { dev: "node server.js" },
-    },
-    null,
-    2,
-  );
+  const installedRef = useRef(false);
 
   /**
    * Detect whether a boot failure is a "soft" configuration error that we
-   * can recover from by falling back to the srcDoc sandbox preview.
-   * These are typically referrer / API-key / cross-origin issues.
+   * can recover from by falling back to the in-app Canvas preview.
    */
   const isRecoverableBootError = (err) => {
     const msg = (err?.message || err?.toString() || "").toLowerCase();
@@ -93,7 +65,7 @@ server.listen(3000, () => {
 
   /**
    * Switch the hook into sandbox fallback mode. The editor will render the
-   * preview via an iframe srcDoc instead of a live WebContainer URL.
+   * preview via the in-app Canvas component instead of a live WebContainer URL.
    */
   const enableSandboxFallback = useCallback((reason) => {
     setFallback(true);
@@ -103,17 +75,26 @@ server.listen(3000, () => {
     if (!fallbackReportedRef.current) {
       fallbackReportedRef.current = true;
       console.warn(
-        "[useWebContainer] Live runtime unavailable — using sandbox preview.",
+        "[useWebContainer] Live runtime unavailable — using in-app Canvas preview.",
         reason ? `Reason: ${reason}` : "",
       );
     }
   }, []);
 
   /**
+   * Append lines to the terminal output buffer.
+   */
+  const appendTerminal = useCallback((lines) => {
+    setTerminalLines((prev) => {
+      const newLines = Array.isArray(lines) ? lines : [lines];
+      const combined = [...prev, ...newLines];
+      return combined.slice(-500);
+    });
+  }, []);
+
+  /**
    * Read the container file system recursively and build a tree structure
-   * suitable for rendering in the editor sidebar.
-   *
-   * Each node: { name, path, type: "directory"|"file", children?: [] }
+   * for the editor sidebar. Skips node_modules.
    */
   const readFileTree = useCallback(async (path = ".") => {
     const container = containerRef.current;
@@ -126,7 +107,6 @@ server.listen(3000, () => {
       const tree = [];
 
       for (const entry of entries) {
-        // Skip node_modules to keep the tree fast and readable.
         if (entry.name === "node_modules") continue;
 
         const fullPath = path === "." ? entry.name : `${path}/${entry.name}`;
@@ -148,7 +128,6 @@ server.listen(3000, () => {
         tree.push(node);
       }
 
-      // Sort: directories first, then files, alphabetically.
       tree.sort((a, b) => {
         if (a.type !== b.type) return a.type === "directory" ? -1 : 1;
         return a.name.localeCompare(b.name);
@@ -161,9 +140,6 @@ server.listen(3000, () => {
     }
   }, []);
 
-  /**
-   * Re-read the container file system and update the fileTree state.
-   */
   const refreshFileTree = useCallback(async () => {
     if (!containerRef.current || fallback) return;
     const tree = await readFileTree(".");
@@ -171,23 +147,7 @@ server.listen(3000, () => {
   }, [readFileTree, fallback]);
 
   /**
-   * Append lines to the terminal output buffer.
-   */
-  const appendTerminal = useCallback((lines) => {
-    setTerminalLines((prev) => {
-      const newLines = Array.isArray(lines) ? lines : [lines];
-      // Cap the buffer to prevent unbounded growth.
-      const combined = [...prev, ...newLines];
-      return combined.slice(-500);
-    });
-  }, []);
-
-  /**
-   * Run a terminal command inside the WebContainer and stream its output
-   * to the terminalLines buffer.
-   *
-   * @param {string} command  - e.g. "ls", "cat", "npm"
-   * @param {string[]} args   - e.g. ["-la"], ["index.html"]
+   * Run a terminal command inside the WebContainer and stream its output.
    */
   const runCommand = useCallback(
     async (command, args = []) => {
@@ -208,13 +168,12 @@ server.listen(3000, () => {
       try {
         const process = await container.spawn(command, args);
 
-        // Stream stdout/stderr to the terminal buffer.
         const reader = process.output.getReader();
         const decoder = new TextDecoder();
         let done = false;
 
         while (!done) {
-          // eslint-disable-next-line no-await-in-loop
+           
           const result = await reader.read();
           done = result.done;
 
@@ -226,41 +185,41 @@ server.listen(3000, () => {
           }
         }
 
-        // eslint-disable-next-line no-await-in-loop
+         
         const exitCode = await process.exit;
         appendTerminal({
           type: exitCode === 0 ? "success" : "error",
           text: `[process exited with code ${exitCode}]`,
         });
+        return exitCode;
       } catch (err) {
         appendTerminal({
           type: "error",
           text: err?.message || "Command execution failed.",
         });
+        return 1;
       } finally {
         setIsCommandRunning(false);
-        // Refresh the file tree in case the command changed the FS.
         await refreshFileTree();
       }
     },
     [fallback, appendTerminal, refreshFileTree],
   );
 
-  /**
-   * Clear the terminal output buffer.
-   */
   const clearTerminal = useCallback(() => {
     setTerminalLines([]);
   }, []);
 
   /**
-   * Boot + mount the WebContainer with the given initial HTML.
-   * Idempotent: if already booted, reuses the existing instance.
-   * On recoverable failures, degrades to sandbox mode instead of erroring.
+   * Boot + mount the WebContainer with a REAL multi-file Vite project
+   * generated from the pageData JSON. Idempotent: reuses an existing
+   * instance. On recoverable failures, degrades to sandbox mode.
+   *
+   * @param {object} pageData - the PageData Single Source of Truth
+   * @returns {Promise<string|null>} preview URL or null on fallback
    */
   const boot = useCallback(
-    async (initialHtml) => {
-      // If a boot is already in-flight, wait for it.
+    async (pageData) => {
       if (bootPromiseRef.current) {
         return bootPromiseRef.current;
       }
@@ -272,8 +231,6 @@ server.listen(3000, () => {
 
           const apiKey = import.meta.env.VITE_WEBCONTAINER_API_KEY;
 
-          // Missing or placeholder key → degrade gracefully instead of
-          // throwing a hard error that breaks the editor.
           if (!apiKey || apiKey === "your_webcontainer_api_key_here") {
             enableSandboxFallback(
               "Missing or placeholder VITE_WEBCONTAINER_API_KEY",
@@ -281,113 +238,138 @@ server.listen(3000, () => {
             return null;
           }
 
-          // WebContainer requires a cross-origin isolated context to
-          // transfer SharedArrayBuffer to its worker. If the page is not
-          // isolated (missing COOP/COEP headers), boot() throws a
-          // DataCloneError. Detect this up front and fall back to the
-          // sandbox preview instead of letting the error surface.
+          // WebContainer requires cross-origin isolation for SharedArrayBuffer.
           if (typeof window !== "undefined" && !window.crossOriginIsolated) {
             enableSandboxFallback(
               "Page is not cross-origin isolated (SharedArrayBuffer unavailable). " +
-                "Add Cross-Origin-Opener-Policy and Cross-Origin-Embedder-Policy headers.",
+                "COOP/COEP headers are required — check vite.config.js.",
             );
             return null;
           }
 
-          // Configure the API key (required for production usage),
-          // then boot the WebContainer. The key must be set before boot.
           configureAPIKey(apiKey);
           const container = await WebContainer.boot();
           containerRef.current = container;
 
           setStatus("mounting");
 
-          // Mount the minimal project tree.
-          await container.mount({
-            "package.json": { file: { contents: packageJson } },
-            "server.js": { file: { contents: serverJs } },
-            "index.html": { file: { contents: initialHtml || "" } },
-          });
+          // Generate the full multi-file Vite project from pageData.
+          const { tree } = generateProject(pageData);
+          await container.mount(tree);
 
-          // Read the initial file tree for the sidebar.
           await refreshFileTree();
 
-          // Print a welcome banner to the terminal.
           appendTerminal([
             { type: "success", text: "✓ WebContainer booted successfully." },
             {
               type: "output",
-              text: "Lume preview runtime ready. Type commands below (e.g. ls, cat index.html).",
+              text: "Mounted multi-file Vite project (ES modules + Tailwind build).",
             },
           ]);
 
-          // Start the dev server.
+          // Install dependencies (only once per container lifetime).
+          if (!installedRef.current) {
+            setStatus("installing");
+            appendTerminal({ type: "command", text: "$ npm install" });
+            const installCode = await runCommand("npm", ["install"]);
+            if (installCode !== 0) {
+              throw new Error(
+                `npm install failed with exit code ${installCode}`,
+              );
+            }
+            installedRef.current = true;
+            appendTerminal({
+              type: "success",
+              text: "✓ Dependencies installed.",
+            });
+          }
+
+          // Start the Vite dev server.
+          setStatus("starting");
+          appendTerminal({ type: "command", text: "$ npm run dev" });
           const process = await container.spawn("npm", ["run", "dev"]);
           serverProcessRef.current = process;
 
-          // Listen for the server-ready event to get the preview URL.
+          // Stream dev server output to the terminal.
+          const reader = process.output.getReader();
+          const decoder = new TextDecoder();
+           
+          while (true) {
+             
+            const result = await reader.read();
+            if (result.done) break;
+            if (result.value) {
+              const text = decoder.decode(result.value, { stream: true });
+              if (text) appendTerminal({ type: "output", text });
+            }
+          }
+
           container.on("server-ready", (_port, url) => {
             setPreviewUrl(url);
             setStatus("running");
+            appendTerminal({
+              type: "success",
+              text: `✓ Vite dev server ready at ${url}`,
+            });
           });
 
-          // Surface process errors.
           process.exit.then((code) => {
             if (code !== 0 && status !== "running") {
-              setError(`Server process exited with code ${code}`);
+              setError(`Dev server exited with code ${code}`);
               setStatus("error");
             }
           });
+
+          return previewUrl;
         } catch (err) {
           console.error("WebContainer boot error:", err);
 
-          // Recoverable configuration / referrer errors → sandbox fallback.
           if (isRecoverableBootError(err)) {
             enableSandboxFallback(err?.message || "Boot failed");
             return null;
           }
 
-          // Non-recoverable error → surface it.
           setError(err?.message || "Failed to start WebContainer");
           setStatus("error");
           bootPromiseRef.current = null;
+          return null;
         }
       })();
 
       return bootPromiseRef.current;
     },
-    [
-      packageJson,
-      serverJs,
-      status,
-      enableSandboxFallback,
-      refreshFileTree,
-      appendTerminal,
-    ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [enableSandboxFallback, refreshFileTree, runCommand, status, previewUrl],
   );
 
+  /**
+   * Hot-update the preview by rewriting only src/data/pageData.json.
+   * Vite's HMR picks up the change and re-renders without a full reload,
+   * so the user sees edits instantly without re-running npm install.
+   *
+   * @param {object} pageData - updated PageData
+   */
   const updatePreview = useCallback(
-    async (html) => {
+    async (pageData) => {
       if (fallback) return;
 
       const container = containerRef.current;
 
       if (!container) {
-        await boot(html);
+        await boot(pageData);
         return;
       }
 
       try {
-        await container.fs.writeFile("index.html", html);
+        const json = generatePageDataFile(pageData);
+        await container.fs.writeFile("/src/data/pageData.json", json);
 
+        // Bust the iframe cache so the new content is fetched.
         setPreviewUrl((prev) =>
           prev ? `${prev.split("?")[0]}?t=${Date.now()}` : prev,
         );
-
-        await refreshFileTree();
       } catch (err) {
         console.error("WebContainer update error:", err);
-        // If the container died mid-flight, fall back to sandbox mode.
         if (isRecoverableBootError(err)) {
           enableSandboxFallback(err?.message || "Update failed");
         } else {
@@ -395,7 +377,7 @@ server.listen(3000, () => {
         }
       }
     },
-    [boot, fallback, enableSandboxFallback, refreshFileTree],
+    [boot, fallback, enableSandboxFallback],
   );
 
   // Cleanup on unmount.

@@ -221,193 +221,187 @@ export function cleanGeneratedHtml(code) {
   return cleaned;
 }
 
+/**
+ * Parse the AI response into { message, pageData }.
+ *
+ * The AI is now instructed to return a JSON object with two fields:
+ *   { "message": "...", "pageData": { ...structured page definition... } }
+ *
+ * We also accept the case where the pageData object is returned at the top
+ * level (i.e. the AI omits the wrapper and returns the schema directly).
+ * The frontend's normalizePageData() is the final safety net, so here we
+ * only validate the minimal shape (sections must be an array).
+ */
 export function parseAIWebsiteResponse(text) {
   if (typeof text !== "string" || !text.trim()) {
     throw new Error("AI response is empty");
   }
 
   let parsed;
-
   try {
     parsed = extractJsonObject(text);
   } catch (jsonError) {
-    // Not valid JSON — try to salvage an HTML document directly from
-    // the raw text (handles plain-HTML or truncated responses).
-    const code = extractHtmlDocument(text);
-
-    return {
-      message: "Website generated successfully",
-      code: cleanGeneratedHtml(code),
-    };
+    throw new Error(
+      "AI response does not contain a parseable JSON object with pageData",
+    );
   }
 
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new Error("AI JSON response must be an object");
   }
 
-  // The model may return a valid JSON object but with a truncated "code"
-  // string (response cut off mid-HTML). Salvage whatever HTML is present.
-  const rawCode =
-    typeof parsed.code === "string" ? parsed.code : String(parsed.code || "");
   const message =
     typeof parsed.message === "string" && parsed.message.trim()
       ? parsed.message.trim()
       : "Website generated successfully";
 
-  // If the code field contains an HTML document (even truncated), extract
-  // and repair it. Otherwise fall back to scanning the whole response.
-  let code = "";
-  if (rawCode.trim()) {
-    try {
-      code = extractHtmlDocument(rawCode);
-    } catch {
-      code = cleanGeneratedHtml(rawCode);
-    }
+  // Accept pageData nested under a "pageData" key, OR returned at the top
+  // level (schemaVersion + sections present directly on the root object).
+  let pageData = null;
+  if (parsed.pageData && typeof parsed.pageData === "object") {
+    pageData = parsed.pageData;
+  } else if (parsed.schemaVersion && Array.isArray(parsed.sections)) {
+    pageData = parsed;
   }
 
-  if (!code.trim()) {
-    // Last resort: scan the entire original response for HTML.
-    code = extractHtmlDocument(text);
+  if (
+    !pageData ||
+    typeof pageData !== "object" ||
+    !Array.isArray(pageData.sections)
+  ) {
+    throw new Error("AI response does not contain a valid pageData object");
   }
 
-  return {
-    message,
-    code: cleanGeneratedHtml(code),
-  };
+  return { message, pageData };
 }
 
+/**
+ * Build a mock pageData response used when OpenRouter is unavailable.
+ *
+ * Returns a JSON string shaped exactly like a real AI response so the rest of
+ * the pipeline (parseAIWebsiteResponse → controller → frontend) can run without
+ * any special-casing. The mock includes a hero, features and CTA section so the
+ * editor preview is non-trivial.
+ *
+ * @param {string} reason - human readable reason for the fallback.
+ * @returns {string} JSON string with { message, pageData }.
+ */
 function buildMockWebsiteResponse(reason = "OpenRouter is unavailable") {
+  const safeReason = String(reason).replace(/</g, "<");
   return JSON.stringify({
-    message: `Mock website generated because ${reason}.`,
-    code: `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Lume Offline Preview</title>
-  <style>
-    :root {
-      color-scheme: dark;
-      --bg: #0b1020;
-      --card: rgba(20, 28, 48, 0.88);
-      --accent: #4c7294;
-      --accent-2: #6fb1d6;
-      --text: #f5f7fb;
-      --muted: #b6c2d1;
-      --border: rgba(255, 255, 255, 0.1);
-    }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      font-family: system-ui, sans-serif;
-      min-height: 100vh;
-      background: radial-gradient(circle at top, #182746 0%, var(--bg) 55%);
-      color: var(--text);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 24px;
-    }
-    .card {
-      width: min(720px, 100%);
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 24px;
-      padding: 32px;
-      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
-    }
-    .badge {
-      display: inline-block;
-      padding: 8px 12px;
-      border-radius: 999px;
-      background: rgba(111, 177, 214, 0.14);
-      color: var(--accent-2);
-      font-size: 14px;
-      margin-bottom: 16px;
-    }
-    h1 {
-      margin: 0 0 12px;
-      font-size: clamp(2rem, 4vw, 3.25rem);
-      line-height: 1.1;
-    }
-    p {
-      color: var(--muted);
-      line-height: 1.7;
-      font-size: 1rem;
-    }
-    .actions {
-      display: flex;
-      gap: 12px;
-      flex-wrap: wrap;
-      margin-top: 24px;
-    }
-    button, a {
-      border: 0;
-      border-radius: 12px;
-      padding: 14px 18px;
-      font: inherit;
-      text-decoration: none;
-      cursor: pointer;
-      transition: transform 0.2s ease, opacity 0.2s ease;
-    }
-    button {
-      background: var(--accent);
-      color: white;
-    }
-    a {
-      background: transparent;
-      color: var(--text);
-      border: 1px solid var(--border);
-    }
-    button:hover, a:hover { transform: translateY(-1px); opacity: 0.95; }
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 12px;
-      margin-top: 28px;
-    }
-    .panel {
-      padding: 16px;
-      border-radius: 16px;
-      background: rgba(255, 255, 255, 0.04);
-      border: 1px solid var(--border);
-    }
-    .panel strong { display: block; margin-bottom: 8px; }
-    @media (max-width: 768px) {
-      .card { padding: 24px; }
-      .grid { grid-template-columns: 1fr; }
-    }
-  </style>
-</head>
-<body>
-  <main class="card">
-    <span class="badge">Offline fallback active</span>
-    <h1>Lume is connected, but OpenRouter is unreachable.</h1>
-    <p>
-      Your backend and database are working. This preview is returned so you can
-      keep testing the editor flow while the AI provider is unavailable.
-    </p>
-    <div class="actions">
-      <button onclick="alert('Frontend, backend, and JavaScript are all working.')">Test interaction</button>
-      <a href="https://openrouter.ai/" target="_blank" rel="noreferrer">OpenRouter status</a>
-    </div>
-    <section class="grid">
-      <article class="panel">
-        <strong>Backend</strong>
-        <span>API routes are responding normally.</span>
-      </article>
-      <article class="panel">
-        <strong>Database</strong>
-        <span>Website records can still be stored and updated.</span>
-      </article>
-      <article class="panel">
-        <strong>AI Provider</strong>
-        <span>${reason.replace(/</g, "&lt;")}</span>
-      </article>
-    </section>
-  </main>
-</body>
-</html>`,
+    message: `Mock website generated because ${safeReason}.`,
+    pageData: {
+      schemaVersion: 1,
+      meta: {
+        title: "Lume Offline Preview",
+        description:
+          "A fallback page generated while the AI provider is unavailable.",
+        lang: "en",
+        theme: {
+          primary: "#4c7294",
+          accent: "#6fb1d6",
+          background: "#0b1020",
+          text: "#f5f7fb",
+          muted: "#b6c2d1",
+          radius: "16px",
+          font: "system-ui, sans-serif",
+        },
+      },
+      header: {
+        brand: "Lume",
+        logoText: "Lume",
+        links: [
+          { label: "Features", href: "#features" },
+          { label: "Pricing", href: "#pricing" },
+          { label: "Contact", href: "#contact" },
+        ],
+        ctaLabel: "Get started",
+        ctaHref: "#cta",
+      },
+      sections: [
+        {
+          id: "mock-hero",
+          type: "hero",
+          props: {
+            eyebrow: "Offline fallback active",
+            title: "Lume is connected, but OpenRouter is unreachable.",
+            subtitle:
+              "Your backend and database are working. This preview is returned so you can keep testing the editor flow while the AI provider is unavailable.",
+            primaryCta: { label: "Test interaction", href: "#" },
+            secondaryCta: {
+              label: "OpenRouter status",
+              href: "https://openrouter.ai/",
+            },
+            image: {
+              src: "",
+              alt: "",
+            },
+          },
+        },
+        {
+          id: "mock-features",
+          type: "features",
+          props: {
+            eyebrow: "System status",
+            title: "What's still working",
+            items: [
+              {
+                icon: "server",
+                title: "Backend",
+                description: "API routes are responding normally.",
+              },
+              {
+                icon: "database",
+                title: "Database",
+                description: "Website records can still be stored and updated.",
+              },
+              {
+                icon: "cpu",
+                title: "AI Provider",
+                description: safeReason,
+              },
+            ],
+          },
+        },
+        {
+          id: "mock-cta",
+          type: "cta",
+          props: {
+            title: "Ready when you are",
+            subtitle:
+              "Once the AI provider is back online, regenerate this page to get a fresh design.",
+            primaryCta: { label: "Regenerate", href: "#" },
+            secondaryCta: { label: "Back to dashboard", href: "/" },
+          },
+        },
+      ],
+      footer: {
+        brand: "Lume",
+        description:
+          "AI-powered website builder. This is an offline fallback preview.",
+        columns: [
+          {
+            title: "Product",
+            links: [
+              { label: "Features", href: "#features" },
+              { label: "Pricing", href: "#pricing" },
+            ],
+          },
+          {
+            title: "Company",
+            links: [
+              { label: "About", href: "#" },
+              { label: "Contact", href: "#contact" },
+            ],
+          },
+        ],
+        socials: [
+          { label: "GitHub", href: "https://github.com", icon: "github" },
+          { label: "Twitter", href: "https://twitter.com", icon: "twitter" },
+        ],
+        copyright: "Lume",
+      },
+    },
   });
 }
 
@@ -449,11 +443,11 @@ async function tryModel(model, apiKey, clientPrompt) {
           {
             role: "system",
             content:
-              'You are a senior React 18 + Next.js frontend engineer. Generate a premium, production-grade single-page website using React 18 (functional components + hooks), written in Next.js App-Router style, delivered as ONE self-contained HTML file. The HTML must include CDN scripts for React 18, ReactDOM 18, Babel Standalone (for in-browser JSX), and Tailwind CSS. Write the React app inside a single <script type="text/babel"> tag and mount it with ReactDOM.createRoot(document.getElementById("root")).render(<App />). Return ONLY valid JSON with exactly two string fields: "message" and "code". The code value must contain ONE complete HTML document starting with <!DOCTYPE html> and ending with </html>. Do not describe your plan, do not say "Now the React code", do not include markdown fences, prose, reasoning, comments outside the HTML, or any text outside the JSON object. Keep the code compact (no excessive blank lines) so it fits within the token limit. Always finish the document with </html>.',
+              'You are a senior frontend architect and UI/UX engineer. You generate STRUCTURED website definitions as a JSON "pageData" object — NOT raw HTML or React code. The pageData object is the Single Source of Truth and is rendered by a pre-built React component system. Return ONLY a valid JSON object with exactly two fields: "message" (a short confirmation string) and "pageData" (the structured page definition). The pageData object MUST have this exact top-level shape: { "schemaVersion": 1, "meta": { "title", "description", "lang", "theme": { "primary", "mode", "font", "radius" } }, "header": { "id", "type", "brand", "logoText", "links": [{"label","href"}], "ctaLabel", "ctaHref" }, "sections": [ ... ], "footer": { "id", "type", "brand", "columns": [{"title","links":[{"label","href"}]}], "socials": [{"icon","label","href"}] } }. Each item in the sections array MUST have a unique "id" string and a "type" which is one of: "hero", "features", "stats", "gallery", "testimonials", "pricing", "cta", "contact". Section-specific props: hero={eyebrow,title,subtitle,primaryCta:{label,href},secondaryCta:{label,href},image:{src,alt}}; features={eyebrow,title,items:[{icon,title,description}]}; stats={title,items:[{label,value}]}; gallery={eyebrow,title,columns,items:[{src,alt}]}; testimonials={eyebrow,title,items:[{quote,author,role,avatar}]}; pricing={eyebrow,title,plans:[{name,price,period,description,features:[],featured,cta:{label,href}}]}; cta={title,subtitle,primaryCta:{label,href},secondaryCta:{label,href}}; contact={title,subtitle,fields:[{name,label,type,placeholder,required}]}. Use realistic business content (NO lorem ipsum). Use Unsplash image URLs ending with ?auto=format&fit=crop&w=1200&q=80 for all images. Do not include markdown fences, prose, reasoning, or any text outside the JSON object. Keep the JSON compact so it fits within the token limit.',
           },
           {
             role: "user",
-            content: `You are a React 18 + Next.js web development assistant. Your task is to generate a complete, self-contained HTML file containing a React 18 application (using CDN React, ReactDOM, Babel, and Tailwind CSS) for the user's request. The code should be clean, modern, fully responsive, and use functional components with hooks. Do not include any explanations or comments outside the code. Strictly follow the rules and style provided by the user.\n\n${clientPrompt}`,
+            content: `You are a website design assistant. Your task is to generate a complete, structured pageData JSON object for the user's request. The pageData will be rendered by a React component system (Hero, Features, Stats, Gallery, Testimonials, Pricing, CTA, Contact sections). Produce realistic, business-ready content with no lorem ipsum. Strictly follow the schema and rules provided by the user.\n\n${clientPrompt}`,
           },
         ],
         temperature: 0.2,

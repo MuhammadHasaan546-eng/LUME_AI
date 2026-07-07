@@ -28,9 +28,20 @@ const websiteSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+    // ── pageData: the JSON Single Source of Truth ──
+    // Structured page definition (schemaVersion, meta, header, sections[],
+    // footer). The frontend Editor reads/writes this object directly. It is
+    // rendered both in-app (Canvas) and inside the WebContainer Vite project.
+    pageData: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
+    },
+    // ── latestCode: legacy/derived HTML string ──
+    // Kept for backward compatibility (old LiveSite.jsx renders this directly).
+    // No longer required — new websites are driven by pageData.
     latestCode: {
       type: String,
-      required: true,
+      required: false,
       default: "",
     },
 

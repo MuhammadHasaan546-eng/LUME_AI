@@ -56,6 +56,38 @@ export const updateWebsite = createAsyncThunk(
   },
 );
 
+/**
+ * Persist the editor's current pageData (the JSON Single Source of Truth) for
+ * a website. This is NOT an AI call — it is a direct save of the structured
+ * page definition the user has been editing in the canvas. Free of charge.
+ *
+ * @param {string} websiteId - the website document id
+ * @param {object} pageData  - the full pageData object (schemaVersion, meta,
+ *                             header, sections[], footer)
+ */
+export const savePageData = createAsyncThunk(
+  "website/savePageData",
+  async ({ websiteId, pageData }, { rejectWithValue }) => {
+    try {
+      const res = await axios.put(
+        `${WEBSITE_API_URL}/website/save-page-data`,
+        { websiteId, pageData },
+        {
+          headers: {
+            "Content-Type": "application/json",
+          },
+          withCredentials: true,
+        },
+      );
+      return res.data;
+    } catch (error) {
+      const message = getErrorMessage(error, "Failed to save page data");
+      console.error("Save Page Data Error:", message);
+      return rejectWithValue(message);
+    }
+  },
+);
+
 export const getUserWebsites = createAsyncThunk(
   "website/getUserWebsites",
   async (_, { rejectWithValue }) => {
@@ -109,12 +141,11 @@ export const deleteWebsite = createAsyncThunk(
 
 export const deployWebsite = createAsyncThunk(
   "website/deployWebsite",
-  async ({ websiteId, code }, { rejectWithValue }) => {
+  async ({ websiteId, pageData }, { rejectWithValue }) => {
     try {
       const res = await axios.post(
         `${WEBSITE_API_URL}/website/${websiteId}/deploy`,
-        { code },
-
+        { pageData },
         {
           headers: {
             "Content-Type": "application/json",

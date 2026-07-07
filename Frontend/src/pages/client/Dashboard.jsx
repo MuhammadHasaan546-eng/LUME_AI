@@ -8,13 +8,13 @@ import { toast } from "sonner";
 import {
   ArrowRight,
   CalendarDays,
-  Code2,
   Globe2,
   LayoutGrid,
   Loader2,
   Rocket,
   Sparkles,
 } from "lucide-react";
+import Canvas from "@/editor/Canvas";
 
 const cardVariants = {
   hidden: { opacity: 0, y: 24, scale: 0.98 },
@@ -52,32 +52,38 @@ const formatDateTime = (date) => {
   }).format(new Date(date));
 };
 
-const buildPreviewSrcDoc = (code = "") => {
-  const fallbackPreview = `
-    <div style="height:100vh;display:grid;place-items:center;background:#0f1020;color:#f8fafc;font-family:Inter,system-ui,sans-serif;text-align:center;padding:24px;">
-      <div>
-        <div style="font-size:28px;margin-bottom:10px;">✨</div>
-        <strong style="font-size:18px;">Website preview</strong>
-        <p style="margin:8px 0 0;color:#cbd5e1;font-size:13px;">Open editor to generate or update this website.</p>
+/**
+ * Compact, non-interactive Canvas preview for dashboard cards. Renders the
+ * pageData JSON through the same typed section components used in the editor,
+ * scaled down to fit the card thumbnail. Falls back to a placeholder when
+ * the website has no pageData yet (e.g. legacy records with only latestCode).
+ */
+const DashboardPreview = ({ pageData }) => {
+  if (!pageData) {
+    return (
+      <div className="grid h-full w-full place-items-center bg-zinc-100 dark:bg-zinc-950">
+        <div className="text-center">
+          <div className="mb-2 text-2xl">✨</div>
+          <p className="text-xs font-semibold text-zinc-400">
+            Open editor to generate
+          </p>
+        </div>
       </div>
-    </div>`;
-
-  const safeCode = code?.trim() || fallbackPreview;
-  const previewGuard = `
-<base href="about:srcdoc">
-<style>html,body{margin:0;overflow:hidden;} body{transform:scale(.38);transform-origin:top left;width:263%;height:263%;pointer-events:none;}</style>
-<script>
-  (function () {
-    document.addEventListener('click', function (event) { event.preventDefault(); }, true);
-    document.addEventListener('submit', function (event) { event.preventDefault(); }, true);
-  })();
-</script>`;
-
-  if (/<head[\s>]/i.test(safeCode)) {
-    return safeCode.replace(/<head([^>]*)>/i, `<head$1>${previewGuard}`);
+    );
   }
 
-  return `${previewGuard}${safeCode}`;
+  return (
+    <div
+      className="origin-top-left overflow-hidden"
+      style={{ transform: "scale(0.38)", width: "263%", height: "263%" }}
+    >
+      <Canvas
+        pageData={pageData}
+        device="desktop"
+        className="pointer-events-none select-none"
+      />
+    </div>
+  );
 };
 
 const Dashboard = () => {
@@ -94,9 +100,20 @@ const Dashboard = () => {
   const handleQuickDeploy = async (event, website) => {
     event.stopPropagation();
 
+    if (!website.pageData) {
+      toast.error(
+        "This website has no page data to deploy. Open the editor first.",
+      );
+      navigate(`/editor/${website._id}`);
+      return;
+    }
+
     try {
       const response = await dispatch(
-        deployWebsite({ websiteId: website._id, code: website.latestCode }),
+        deployWebsite({
+          websiteId: website._id,
+          pageData: website.pageData,
+        }),
       ).unwrap();
       toast.success(response.message || "Website deployed successfully.");
       navigate(`/live-site/${website._id}`);
@@ -305,17 +322,11 @@ const Dashboard = () => {
                 >
                   <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 via-purple-500/5 to-pink-500/10 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
                   <div className="relative mb-5 h-40 overflow-hidden rounded-2xl border border-border/40 bg-muted/30 shadow-inner">
-                    <iframe
-                      srcDoc={buildPreviewSrcDoc(website.latestCode)}
-                      title={`${website.title || "Website"} preview`}
-                      sandbox="allow-scripts allow-top-navigation-by-user-activation allow-forms allow-modals allow-popups"
-                      loading="lazy"
-                      className="h-full w-full bg-white"
-                    />
+                    <DashboardPreview pageData={website.pageData} />
                     <div className="absolute inset-x-3 top-3 flex items-center justify-between gap-2">
                       <span className="inline-flex items-center gap-1.5 rounded-full border border-white/60 bg-background/85 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-foreground shadow-sm backdrop-blur-md">
-                        <Code2 className="h-3 w-3 text-[#B94AF4]" />
-                        Srcdoc
+                        <Sparkles className="h-3 w-3 text-[#B94AF4]" />
+                        Canvas
                       </span>
                       <span
                         className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] shadow-sm backdrop-blur-md ${

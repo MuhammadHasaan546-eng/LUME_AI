@@ -10,10 +10,12 @@ import {
   getShowcaseWebsites,
   deleteWebsite,
   deployWebsite,
+  savePageData,
 } from "../controllers/website.controller.js";
 import {
   generateWebsiteValidation,
   updateWebsiteValidation,
+  savePageDataValidation,
 } from "../validations/website.validation.js";
 
 const router = express.Router();
@@ -31,6 +33,15 @@ router.put(
   IsAuth,
   validate(updateWebsiteValidation),
   updateWebsite,
+);
+
+// ── pageData persistence (Single Source of Truth) ──
+// The Editor autosaves the full JSON page definition in a single call.
+router.put(
+  "/website/save-page-data",
+  IsAuth,
+  validate(savePageDataValidation),
+  savePageData,
 );
 
 // PUBLIC — showcase gallery of all deployed websites (no auth required)
