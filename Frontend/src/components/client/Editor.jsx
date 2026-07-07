@@ -61,7 +61,6 @@ import {
   Layers,
   Terminal,
   ChevronRight,
-  ChevronDown,
   Sun,
   Moon,
   MessageSquare,
@@ -69,8 +68,6 @@ import {
   Rocket,
   Laptop,
   Folder,
-  FileCode,
-  FileText,
   Trash2,
   Send,
   Plus,
@@ -78,6 +75,7 @@ import {
 import MonacoEditor from "@monaco-editor/react";
 import { toast } from "sonner";
 import { Canvas } from "@/editor/Canvas";
+import FileExplorer from "@/components/client/FileExplorer";
 import {
   createDefaultPageData,
   createDefaultSection,
@@ -353,7 +351,6 @@ function Editor({
   const [mobileActiveView, setMobileActiveView] = useState("editor");
   const [selectedSectionId, setSelectedSectionId] = useState(null);
   const [terminalInput, setTerminalInput] = useState("");
-  const [expandedFolders, setExpandedFolders] = useState({ ".": true });
   const [jsonDraft, setJsonDraft] = useState(null);
 
   const chatEndRef = useRef(null);
@@ -370,6 +367,8 @@ function Editor({
     updatePreview: updateWebContainerPreview,
     fileTree: wcFileTree,
     refreshFileTree: refreshWcFileTree,
+    readFile: wcReadFile,
+    writeFile: wcWriteFile,
     terminalLines: wcTerminalLines,
     runCommand: runWcCommand,
     clearTerminal: clearWcTerminal,
@@ -519,10 +518,6 @@ function Editor({
     setTerminalInput("");
   };
 
-  const toggleFolder = (path) => {
-    setExpandedFolders((prev) => ({ ...prev, [path]: !prev[path] }));
-  };
-
   /* ── Section operations ──────────────────────────────────────────── */
 
   const handleAddSection = useCallback(
@@ -554,62 +549,6 @@ function Editor({
     },
     [updatePageData],
   );
-
-  /* ── File tree rendering ─────────────────────────────────────────── */
-
-  const getFileIcon = (name) => {
-    if (name.endsWith(".html"))
-      return <FileCode className="h-3 w-3 text-orange-500" />;
-    if (name.endsWith(".js") || name.endsWith(".jsx"))
-      return <FileCode className="h-3 w-3 text-yellow-500" />;
-    if (name.endsWith(".json"))
-      return <FileCode className="h-3 w-3 text-emerald-500" />;
-    if (name.endsWith(".css"))
-      return <FileCode className="h-3 w-3 text-blue-500" />;
-    return <FileText className="h-3 w-3 text-zinc-400" />;
-  };
-
-  const renderFileTree = (nodes, depth = 0) => {
-    if (!nodes || nodes.length === 0) return null;
-    return nodes.map((node) => {
-      const isExpanded = expandedFolders[node.path];
-      const indent = depth * 12;
-      if (node.type === "directory") {
-        return (
-          <div key={node.path}>
-            <button
-              onClick={() => toggleFolder(node.path)}
-              className="flex w-full items-center gap-1 rounded px-1 py-0.5 text-left transition-colors hover:bg-zinc-200/60 dark:hover:bg-zinc-800/60"
-              style={{ paddingLeft: `${indent + 4}px` }}
-            >
-              <ChevronDown
-                className={`h-3 w-3 text-zinc-400 transition-transform ${isExpanded ? "" : "-rotate-90"}`}
-              />
-              <Folder className="h-3 w-3 text-[#4C7294]" />
-              <span className="truncate font-mono text-[11px] text-zinc-600 dark:text-zinc-300">
-                {node.name}
-              </span>
-            </button>
-            {isExpanded && node.children && (
-              <div>{renderFileTree(node.children, depth + 1)}</div>
-            )}
-          </div>
-        );
-      }
-      return (
-        <div
-          key={node.path}
-          className="flex cursor-default items-center gap-1 rounded px-1 py-0.5 transition-colors hover:bg-zinc-200/60 dark:hover:bg-zinc-800/60"
-          style={{ paddingLeft: `${indent + 20}px` }}
-        >
-          {getFileIcon(node.name)}
-          <span className="truncate font-mono text-[11px] text-zinc-500 dark:text-zinc-400">
-            {node.name}
-          </span>
-        </div>
-      );
-    });
-  };
 
   /* ── Loading state (pageData not yet available) ──────────────────── */
 
@@ -1035,45 +974,14 @@ function Editor({
                   animate={{ opacity: 1 }}
                   className="flex h-full flex-col overflow-hidden"
                 >
-                  <div className="mb-3 flex shrink-0 items-center justify-between border-b border-zinc-200 pb-2 dark:border-zinc-900/60">
-                    <span className="flex items-center gap-1.5 text-xs font-semibold tracking-wide text-zinc-700 dark:text-zinc-300">
-                      <Folder className="h-3.5 w-3.5 text-[#4C7294]" /> Project
-                      Files
-                    </span>
-                    <button
-                      onClick={refreshWcFileTree}
-                      disabled={wcFallback || wcStatus !== "running"}
-                      title="Refresh file tree"
-                      className="rounded-md p-1 transition-colors hover:bg-zinc-200/60 disabled:cursor-not-allowed disabled:opacity-30 dark:hover:bg-zinc-800/60"
-                    >
-                      <RefreshCw className="h-3 w-3 text-zinc-400" />
-                    </button>
-                  </div>
-
-                  {wcFallback ? (
-                    <div className="flex flex-1 items-center justify-center rounded-xl border border-dashed border-zinc-300 bg-zinc-50 p-4 text-center dark:border-zinc-800/80 dark:bg-zinc-950/20">
-                      <p className="text-[11px] leading-relaxed text-zinc-400">
-                        File tree unavailable in sandbox mode.
-                        <br />
-                        WebContainer runtime required.
-                      </p>
-                    </div>
-                  ) : wcFileTree && wcFileTree.length > 0 ? (
-                    <div className="custom-scrollbar flex-1 overflow-y-auto">
-                      {renderFileTree(wcFileTree)}
-                    </div>
-                  ) : (
-                    <div className="flex flex-1 items-center justify-center">
-                      <RefreshCw className="h-4 w-4 animate-spin text-zinc-400" />
-                    </div>
-                  )}
-
-                  {wcFileTree && wcFileTree.length > 0 && (
-                    <div className="mt-2 shrink-0 border-t border-zinc-200 pt-2 font-mono text-[10px] text-zinc-400 dark:border-zinc-900/60">
-                      {wcFileTree.length} root item
-                      {wcFileTree.length !== 1 ? "s" : ""}
-                    </div>
-                  )}
+                  <FileExplorer
+                    fileTree={wcFileTree}
+                    readFile={wcReadFile}
+                    writeFile={wcWriteFile}
+                    refreshFileTree={refreshWcFileTree}
+                    fallback={wcFallback}
+                    status={wcStatus}
+                  />
                 </MotionDiv>
               )}
 

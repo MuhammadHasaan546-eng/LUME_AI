@@ -124,6 +124,28 @@ function generatePackageJson() {
 }
 
 /**
+ * Generate .npmrc for the preview project.
+ *
+ * npm's strict peer-dependency resolver (ERESOLVE) aborts `npm install`
+ * inside WebContainer when the generated dependency tree has conflicting
+ * peer ranges (e.g. React 18 + @tailwindcss/vite 4 + vite 5). Setting
+ * `legacy-peer-deps=true` restores the npm v6 behaviour of ignoring peer
+ * conflicts, which is exactly what we want for a throwaway preview project.
+ *
+ * @returns {string}
+ */
+function generateNpmrc() {
+  return [
+    "legacy-peer-deps=true",
+    "auto-install-peers=true",
+    "strict-peer-dependencies=false",
+    "fund=false",
+    "audit=false",
+    "",
+  ].join("\n");
+}
+
+/**
  * Generate vite.config.js for the preview project.
  * Uses @vitejs/plugin-react + @tailwindcss/vite (real build, no CDN).
  *
@@ -655,6 +677,7 @@ export function generateProject(rawPageData) {
 
   const flat = {
     "package.json": generatePackageJson(),
+    ".npmrc": generateNpmrc(),
     "vite.config.js": generateViteConfig(),
     "index.html": generateIndexHtml(pageData.meta),
     "src/main.jsx": generateMainJsx(),
