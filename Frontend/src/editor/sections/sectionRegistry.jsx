@@ -6,18 +6,18 @@
  * The single place that maps a section `type` (the string stored in the JSON
  * page-data) to:
  *
- *   1. The React component that renders it (from SectionComponents.jsx).
- *   2. A human-readable label + lucide icon, used by the editor's "add
- *      section" menu and the section list.
- *   3. A lightweight prop validator that strips/flags invalid props so a
- *      corrupt DB document can never crash the canvas.
+ * 1. The React component that renders it (from SectionComponents.jsx).
+ * 2. A human-readable label + lucide icon, used by the editor's "add
+ * section" menu and the section list.
+ * 3. A lightweight prop validator that strips/flags invalid props so a
+ * corrupt DB document can never crash the canvas.
  *
  * Why a registry?
- *   The canvas maps over `sections: Section[]` and needs to resolve
- *   `section.type` → component in O(1). Centralizing it here means adding a
- *   new section type is a one-file change (register it here + add the
- *   component + add the factory), and every consumer (Canvas, editor UI,
- *   project generator) stays in sync.
+ * The canvas maps over `sections: Section[]` and needs to resolve
+ * `section.type` → component in O(1). Centralizing it here means adding a
+ * new section type is a one-file change (register it here + add the
+ * component + add the factory), and every consumer (Canvas, editor UI,
+ * project generator) stays in sync.
  *
  * This module is UI-agnostic: it returns components and metadata, never JSX
  * of its own (except via the render helper). It is safe to import from both
@@ -205,11 +205,11 @@ const validateContact = (s) => ({
 
 /**
  * The canonical registry. Each entry binds a SECTION_TYPES value to:
- *   - component: the memoized React component
- *   - validate:  the prop validator (raw section → clean props)
- *   - label:     human-readable name (editor UI)
- *   - icon:      lucide icon component (editor UI)
- *   - description: short helper text (editor UI)
+ * - component: the memoized React component
+ * - validate:  the prop validator (raw section → clean props)
+ * - label:     human-readable name (editor UI)
+ * - icon:      lucide icon component (editor UI)
+ * - description: short helper text (editor UI)
  *
  * Order is intentional and matches the "add section" menu order.
  */

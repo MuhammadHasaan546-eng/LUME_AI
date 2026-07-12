@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import generateAIResponse, {
   parseAIWebsiteResponse,
 } from "../config/openRouter.js";
@@ -482,23 +483,78 @@ export const getLiveWebsite = wrapAsync(async (req, res) => {
   return res.status(200).json(new ApiResponse(200, website));
 });
 
+/**
+ * Soft-delete a project (website).
+ *
+ * REST: DELETE /api/website/website/:websiteId  (auth required)
+ *
+ * Security:
+ *  - IsAuth middleware verifies the JWT and loads req.user (authentication).
+ *  - We confirm the project's `user` matches req.user.id (authorization) —
+ *    only the project owner may delete.
+ *  - websiteId is validated as a real ObjectId before hitting the DB.
+ *
+ * Soft-delete strategy:
+ *  - We never hard-remove the document. We set isDeleted=true + deletedAt=now
+ *    and flip deployed=false / deployedUrl="" so any live site goes offline
+ *    immediately. The model's pre-find hook then hides it from every read
+ *    query (dashboard, showcase, live-site, editor), preserving referential
+ *    integrity for audit/analytics/recovery.
+ *
+ * Cascading (no orphaned data):
+ *  - conversations[] and pageData are EMBEDDED in the Website document, so
+ *    they are hidden/purged together with the parent — nothing to orphan.
+ *  - The live deployment is taken offline (deployed=false) in the same save.
+ *  - If standalone collections (tasks, assets, roles) are introduced later,
+ *    cascade their soft-delete inside this handler before responding.
+ *
+ * Idempotency:
+ *  - We look the document up INCLUDING already-soft-deleted ones (via an
+ *    explicit isDeleted filter that bypasses the auto-exclude hook). If it
+ *    is already deleted we simply return success, so a retried request after
+ *    a lost response does not surface a confusing 404 to the user.
+ */
 export const deleteWebsite = wrapAsync(async (req, res) => {
   const { websiteId } = req.params;
 
-  const website = await Website.findById(websiteId);
+  if (!mongoose.isValidObjectId(websiteId)) {
+    throw new ExpressError("Invalid website ID", 400);
+  }
+
+  // Include soft-deleted docs so a retried delete is idempotent, not a 404.
+  const website = await Website.findOne({
+    _id: websiteId,
+    isDeleted: { $in: [true, false] },
+  });
+
   if (!website) {
     throw new ExpressError("Website not found", 404);
   }
 
+  // Authorization — only the project owner may delete.
   if (website.user.toString() !== req.user.id.toString()) {
     throw new ExpressError("Unauthorized", 403);
   }
 
-  await Website.findByIdAndDelete(websiteId);
+  // Already soft-deleted → treat as success (idempotent).
+  if (website.isDeleted) {
+    return res
+      .status(200)
+      .json(
+        new ApiResponse(200, { websiteId }, "Website deleted successfully"),
+      );
+  }
+
+  // Soft-delete + take the live deployment offline in one atomic save.
+  website.isDeleted = true;
+  website.deletedAt = new Date();
+  website.deployed = false;
+  website.deployedUrl = "";
+  await website.save();
 
   return res
     .status(200)
-    .json(new ApiResponse(200, null, "Website deleted successfully"));
+    .json(new ApiResponse(200, { websiteId }, "Website deleted successfully"));
 });
 
 export const deployWebsite = wrapAsync(async (req, res) => {

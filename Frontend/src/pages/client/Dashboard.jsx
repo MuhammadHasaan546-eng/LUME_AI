@@ -1,8 +1,8 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import DashboardHeader from "@/components/client/Header";
-import { deployWebsite, getUserWebsites } from "@/api/website";
+import { deleteWebsite, deployWebsite, getUserWebsites } from "@/api/website";
 import { useDispatch, useSelector } from "react-redux";
 import { toast } from "sonner";
 import {
@@ -11,10 +11,28 @@ import {
   Globe2,
   LayoutGrid,
   Loader2,
+  MoreVertical,
   Rocket,
   Sparkles,
+  Trash2,
+  TriangleAlert,
 } from "lucide-react";
 import Canvas from "@/editor/Canvas";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 const cardVariants = {
   hidden: { opacity: 0, y: 24, scale: 0.98 },
@@ -93,6 +111,11 @@ const Dashboard = () => {
   const { websites, isLoading, error } = useSelector((state) => state.website);
   const userName = user?.name?.split(" ")[0] || "Creator";
 
+  // Delete-project confirmation flow. `deleteTarget` holds the website the
+  // user intends to delete; when non-null the confirmation dialog is open.
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
   useEffect(() => {
     dispatch(getUserWebsites());
   }, [dispatch]);
@@ -125,6 +148,30 @@ const Dashboard = () => {
   const handleOpenLiveSite = (event, website) => {
     event.stopPropagation();
     navigate(`/live-site/${website._id}`);
+  };
+
+  // Open the delete-confirmation modal for a specific project card.
+  const handleDeleteClick = (event, website) => {
+    event.stopPropagation();
+    setDeleteTarget(website);
+  };
+
+  // Confirmed delete: dispatch the soft-delete thunk and surface a toast for
+  // either outcome. The Redux slice removes the project from `websites`
+  // automatically, so the card disappears without a manual refetch.
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return;
+    const websiteId = deleteTarget._id;
+    setIsDeleting(true);
+    try {
+      const response = await dispatch(deleteWebsite(websiteId)).unwrap();
+      toast.success(response.message || "Project deleted successfully.");
+      setDeleteTarget(null);
+    } catch (err) {
+      toast.error(err || "Failed to delete project. Please try again.");
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   return (
@@ -375,27 +422,56 @@ const Dashboard = () => {
                         )}
                         {website.deployed ? "Deployed" : "Deploy pending"}
                       </span>
-                      {website.deployed ? (
-                        <button
-                          type="button"
-                          onClick={(event) =>
-                            handleOpenLiveSite(event, website)
-                          }
-                          className="inline-flex items-center gap-1 text-xs font-bold text-primary transition-transform hover:translate-x-1"
-                        >
-                          Live Site
-                          <ArrowRight className="h-3.5 w-3.5" />
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={(event) => handleQuickDeploy(event, website)}
-                          className="inline-flex items-center gap-1 text-xs font-bold text-primary transition-transform hover:translate-x-1"
-                        >
-                          Deploy Now
-                          <Rocket className="h-3.5 w-3.5" />
-                        </button>
-                      )}
+                      <div className="flex items-center gap-1">
+                        {website.deployed ? (
+                          <button
+                            type="button"
+                            onClick={(event) =>
+                              handleOpenLiveSite(event, website)
+                            }
+                            className="inline-flex items-center gap-1 text-xs font-bold text-primary transition-transform hover:translate-x-1"
+                          >
+                            Live Site
+                            <ArrowRight className="h-3.5 w-3.5" />
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={(event) =>
+                              handleQuickDeploy(event, website)
+                            }
+                            className="inline-flex items-center gap-1 text-xs font-bold text-primary transition-transform hover:translate-x-1"
+                          >
+                            Deploy Now
+                            <Rocket className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+
+                        {/* Per-card actions menu (delete) */}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <button
+                              type="button"
+                              onClick={(event) => event.stopPropagation()}
+                              className="grid size-7 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                              aria-label="Project actions"
+                            >
+                              <MoreVertical className="h-4 w-4" />
+                            </button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              variant="destructive"
+                              onClick={(event) =>
+                                handleDeleteClick(event, website)
+                              }
+                            >
+                              <Trash2 className="h-4 w-4" />
+                              Delete project
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
                     </div>
                   </div>
                 </motion.article>
@@ -428,6 +504,58 @@ const Dashboard = () => {
           )}
         </div>
       </section>
+
+      {/* ── Delete-project confirmation modal ── */}
+      <Dialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !isDeleting) setDeleteTarget(null);
+        }}
+      >
+        <DialogContent showCloseButton={!isDeleting}>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <TriangleAlert className="h-5 w-5 text-destructive" />
+              Delete project?
+            </DialogTitle>
+            <DialogDescription>
+              You're about to delete{" "}
+              <span className="font-semibold text-foreground">
+                {deleteTarget?.title || "this project"}
+              </span>
+              . This removes it from your dashboard and takes any live
+              deployment offline. This action cannot be undone from the
+              interface.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setDeleteTarget(null)}
+              disabled={isDeleting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleConfirmDelete}
+              disabled={isDeleting}
+            >
+              {isDeleting ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Deleting…
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-4 w-4" />
+                  Delete project
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
