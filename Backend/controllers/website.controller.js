@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import generateAIResponse, {
   parseAIWebsiteResponse,
 } from "../config/openRouter.js";
@@ -9,6 +10,8 @@ import User from "../models/User.models.js";
 
 const GENERATE_COST = 50;
 const UPDATE_COST = 25;
+// Saving page data (manual editor edits) is free — it is not an AI call.
+const SAVE_PAGE_DATA_COST = 0;
 
 function mapAIServiceError(error) {
   const message = error?.message || "AI generation failed. Please try again.";
@@ -20,34 +23,25 @@ function mapAIServiceError(error) {
   return new ExpressError(message, 502);
 }
 
-// export const generateDemo = async (req, res) => {
-//   try {
-//     const aiResponse = await generateAIResponse("Hellow");
-//     if (!aiResponse) {
-//       throw new ExpressError("AI response not found", 404);
-//     }
-//     console.log(aiResponse);
-//     return res.status(200).json(new ApiResponse(200, aiResponse));
-//   } catch (error) {
-//     console.log("api responsive error", error);
-//   }
-// };
+/**
+ * masterPrompt is appended to the user message sent to the AI. The full
+ * pageData schema and section-type rules live in the SYSTEM prompt inside
+ * tryModel() (see Backend/config/openRouter.js). This prompt focuses on the
+ * user's requirement, the quality bar, and the output-format contract.
+ *
+ * The AI must return a JSON object: { message, pageData }. It must NOT return
+ * HTML or React code — the pageData is rendered by a pre-built React component
+ * system on the frontend.
+ */
 const masterPrompt = `
-YOU ARE A PRINCIPAL FRONTEND ARCHITECT
-AND A SENIOR UI/UX ENGINEER
-SPECIALIZED IN RESPONSIVE DESIGN SYSTEMS.
+YOU ARE A PRINCIPAL FRONTEND ARCHITECT AND A SENIOR UI/UX ENGINEER
+SPECIALIZED IN MODERN, CONVERSION-FOCUSED LANDING PAGES.
 
-YOU BUILD HIGH-END, REAL-WORLD, PRODUCTION-GRADE WEBSITES
-USING ONLY HTML, CSS, AND JAVASCRIPT
-THAT WORK PERFECTLY ON ALL SCREEN SIZES.
-
-THE OUTPUT MUST BE CLIENT-DELIVERABLE WITHOUT ANY MODIFICATION.
-
-❌ NO FRAMEWORKS
-❌ NO LIBRARIES
-❌ NO BASIC SITES
-❌ NO PLACEHOLDERS
-❌ NO NON-RESPONSIVE LAYOUTS
+You generate STRUCTURED website definitions as a JSON "pageData" object.
+The pageData is the Single Source of Truth — it is rendered by a pre-built
+React component system (Hero, Features, Stats, Gallery, Testimonials,
+Pricing, CTA, Contact). You NEVER output HTML, React code, or markdown.
+You ONLY output a JSON object.
 
 --------------------------------------------------
 USER REQUIREMENT:
@@ -55,130 +49,92 @@ USER REQUIREMENT:
 --------------------------------------------------
 
 GLOBAL QUALITY BAR (NON-NEGOTIABLE)
---------------------------------------------------
-- Premium, modern UI (2026–2027)
-- Professional typography & spacing
-- Clean visual hierarchy
-- Business-ready content (NO lorem ipsum)
-- Smooth transitions & hover effects
-- SPA-style multi-page experience
-- Production-ready, readable code
+- Premium, modern UI (2026–2027 aesthetic)
+- Professional typography, spacing, and visual hierarchy
+- Business-ready, realistic content (NO lorem ipsum, NO placeholders)
+- Fully responsive intent (the component system handles responsiveness,
+  but choose layouts and content that work on mobile, tablet, and desktop)
+- Accessible semantics (the components are pre-built accessible)
 
 --------------------------------------------------
-RESPONSIVE DESIGN (ABSOLUTE REQUIREMENT)
---------------------------------------------------
-THIS WEBSITE MUST BE FULLY RESPONSIVE.
-
-YOU MUST IMPLEMENT:
-
-✔ Mobile-first CSS approach
-✔ Responsive layout for:
-  - Mobile (<768px)
-  - Tablet (768px–1024px)
-  - Desktop (>1024px)
-
-✔ Use:
-  - CSS Grid / Flexbox
-  - Relative units (%, rem, vw)
-  - Media queries
-
-✔ REQUIRED RESPONSIVE BEHAVIOR:
-  - Navbar collapses / stacks on mobile
-  - Sections stack vertically on mobile
-  - Multi-column layouts become single-column on small screens
-  - Images scale proportionally
-  - Text remains readable on all devices
-  - No horizontal scrolling on mobile
-  - Touch-friendly buttons on mobile
-
-IF THE WEBSITE IS NOT RESPONSIVE → RESPONSE IS INVALID.
-
---------------------------------------------------
-IMAGES (MANDATORY & RESPONSIVE)
---------------------------------------------------
-- Use high-quality images ONLY from:
-  https://images.unsplash.com/
-- EVERY image URL MUST include:
-  ?auto=format&fit=crop&w=1200&q=80
-
-- Images must:
-  - Be responsive (max-width: 100%)
-  - Resize correctly on mobile
-  - Never overflow containers
-
---------------------------------------------------
-TECHNICAL RULES (VERY IMPORTANT)
---------------------------------------------------
-- Output ONE single HTML file
-- Exactly ONE <style> tag
-- Exactly ONE <script> tag
-- NO external CSS / JS / fonts
-- Use system fonts only
-- iframe srcdoc compatible
-- SPA-style navigation using JavaScript
-- No page reloads
-- No dead UI
-- No broken buttons
---------------------------------------------------
-SPA VISIBILITY RULE (MANDATORY)
---------------------------------------------------
-- Pages MUST NOT be hidden permanently
-- If .page { display: none } is used,
-  then .page.active { display: block } is REQUIRED
-- At least ONE page MUST be visible on initial load
-- Hiding all content is INVALID
-
-
---------------------------------------------------
-REQUIRED SPA PAGES
---------------------------------------------------
-- Home
-- About
-- Services / Features
-- Contact
-
---------------------------------------------------
-FUNCTIONAL REQUIREMENTS
---------------------------------------------------
-- Navigation must switch pages using JS
-- Active nav state must update
-- Forms must have JS validation
-- Buttons must show hover + active states
-- Smooth section/page transitions
-
---------------------------------------------------
-FINAL SELF-CHECK (MANDATORY)
---------------------------------------------------
-BEFORE RESPONDING, ENSURE:
-
-1. Layout works on mobile, tablet, desktop
-2. No horizontal scroll on mobile
-3. All images are responsive
-4. All sections adapt properly
-5. Media queries are present and used
-6. Navigation works on all screen sizes
-7. At least ONE page is visible without user interaction
-
-IF ANY CHECK FAILS → RESPONSE IS INVALID
+CONTENT RULES
+- Use realistic business content tailored to the user's request
+- Use Unsplash image URLs for ALL images, each ending with:
+    ?auto=format&fit=crop&w=1200&q=80
+- Give every section a unique, descriptive "id" string (e.g. "hero-main",
+  "features-grid", "pricing-plans")
+- Pick the most appropriate section types for the request. A typical
+  landing page uses: hero → features → stats → testimonials → pricing → cta
+  (do NOT use every type if it does not fit; 4–7 sections is ideal)
+- Keep the JSON compact so it fits within the token limit
 
 --------------------------------------------------
 OUTPUT FORMAT (RAW JSON ONLY)
---------------------------------------------------
 {
   "message": "Short professional confirmation sentence",
-  "code": "<FULL VALID HTML DOCUMENT>"
+  "pageData": { ...the structured page definition following the schema... }
 }
 
 --------------------------------------------------
 ABSOLUTE RULES
---------------------------------------------------
 - RETURN RAW JSON ONLY
-- NO markdown
-- NO explanations
-- NO extra text
-- FORMAT MUST MATCH EXACTLY
-- IF FORMAT IS BROKEN → RESPONSE IS INVALID
+- NO markdown fences (no \`\`\`)
+- NO explanations, prose, or reasoning
+- NO HTML or React code
+- The "pageData" object MUST follow the exact schema described in the
+  system prompt (schemaVersion, meta, header, sections[], footer)
 `;
+
+/**
+ * Build a URL-safe slug from a title. Falls back to a timestamp if the
+ * title yields no usable characters.
+ */
+function buildSlug(title, suffixId = "") {
+  const base = String(title || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+  const slug = `${base || "site"}-${suffixId || Date.now().toString(36)}`;
+  return slug;
+}
+
+/**
+ * Extract the first usable image URL from a pageData object, scanning
+ * sections in order. Used to generate a lightweight thumbnail for lists
+ * (dashboard / showcase) without sending the full pageData to the client.
+ */
+function extractThumbnailFromPageData(pageData) {
+  if (!pageData || typeof pageData !== "object") return "";
+
+  const sections = Array.isArray(pageData.sections) ? pageData.sections : [];
+
+  for (const section of sections) {
+    const props = (section && section.props) || {};
+
+    // hero / cta may carry a single image object
+    if (props.image && typeof props.image === "object" && props.image.src) {
+      return props.image.src;
+    }
+
+    // gallery / features / testimonials / pricing carry arrays of items
+    const collections = [props.items, props.plans, props.gallery].filter(
+      Array.isArray,
+    );
+
+    for (const collection of collections) {
+      for (const item of collection) {
+        if (!item) continue;
+        if (item.src) return item.src;
+        if (item.avatar) return item.avatar;
+        if (item.image && typeof item.image === "object" && item.image.src) {
+          return item.image.src;
+        }
+      }
+    }
+  }
+
+  return "";
+}
 
 export const generateWebSite = wrapAsync(async (req, res) => {
   const { prompt } = req.body;
@@ -212,46 +168,27 @@ export const generateWebSite = wrapAsync(async (req, res) => {
     throw new ExpressError("AI generation failed. Please try again.", 502);
   }
 
-  let parsedResponse = { message: "Website generated successfully", code: "" };
-
+  // parseAIWebsiteResponse returns { message, pageData } and validates that
+  // pageData.sections is an array. The frontend's normalizePageData() is the
+  // final safety net for individual section shapes.
+  let parsedResponse;
   try {
-    // 1. Pehle normal parsing try karein
     parsedResponse = parseAIWebsiteResponse(aiResponse);
-  } catch (e) {
-    console.warn(
-      "Standard parsing failed, applying robust regex cleanup...",
-      e,
+  } catch (error) {
+    console.warn("AI response parsing failed:", error.message);
+    throw new ExpressError(
+      "AI response was invalid or did not contain a valid pageData object. Please try again.",
+      502,
     );
-
-    // 2. FALLBACK SAFETAEY: Agar standard parse fail ho jaye, toh raw text se HTML nikalein
-    let cleanText = aiResponse.trim();
-
-    // Markdown syntax saaf karein (```json ... ``` ya ```html ... ```)
-    if (cleanText.startsWith("```")) {
-      cleanText = cleanText
-        .replace(/^```[a-zA-Z]*\n/, "")
-        .replace(/\n```$/, "")
-        .trim();
-    }
-
-    // Agar pure JSON text ke andar object form mein code aaya hai
-    if (cleanText.includes('"code":') || cleanText.includes("'code':")) {
-      try {
-        const directJson = JSON.parse(cleanText);
-        parsedResponse.code = directJson.code;
-        if (directJson.message) parsedResponse.message = directJson.message;
-      } catch (innerError) {
-        // Agar JSON parse ab bhi fail ho, toh direct string ko hi code maan lein
-        parsedResponse.code = cleanText;
-      }
-    } else {
-      // Agar AI ne bina JSON format ke direct code bhej diya hai
-      parsedResponse.code = cleanText;
-    }
   }
 
-  // Double check ke code empty na ho
-  if (!parsedResponse.code || parsedResponse.code.trim() === "") {
+  const { message, pageData } = parsedResponse;
+
+  if (
+    !pageData ||
+    typeof pageData !== "object" ||
+    !Array.isArray(pageData.sections)
+  ) {
     throw new ExpressError(
       "AI response was empty or invalid. Please try again.",
       502,
@@ -259,22 +196,17 @@ export const generateWebSite = wrapAsync(async (req, res) => {
   }
 
   try {
-    // Unique slug generator
-    const slug =
-      parsedResponse.message
-        .slice(0, 60)
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-|-$/g, "") +
-      "-" +
-      Date.now().toString(36);
+    const title = String(
+      pageData.meta?.title || message || "Untitled website",
+    ).slice(0, 100);
 
-    // Database mein website entry create karein
+    const slug = buildSlug(title, Date.now().toString(36));
+
     const website = await Website.create({
       user: req.user.id,
-      title: parsedResponse.message.slice(0, 100), // Safety check string length
+      title,
       slug,
-      latestCode: parsedResponse.code,
+      pageData,
       conversations: [
         {
           role: "user",
@@ -282,23 +214,23 @@ export const generateWebSite = wrapAsync(async (req, res) => {
         },
         {
           role: "ai",
-          content: parsedResponse.message,
+          content: message,
         },
       ],
     });
 
-    // Credits minus aur save karein
+    // Deduct credits and persist.
     user.credits -= GENERATE_COST;
     await user.save();
 
-    // Clean JSON Object response bhejain frontend ko
     return res.status(200).json(
       new ApiResponse(
         200,
         {
           websiteId: website._id,
-          latestCode: website.latestCode, // Yeh ab bilkul saaf HTML/Code string hogi
+          pageData: website.pageData,
           title: website.title,
+          slug: website.slug,
           conversations: website.conversations,
           createdAt: website.createdAt,
           credits: user.credits,
@@ -356,74 +288,52 @@ export const updateWebsite = wrapAsync(async (req, res) => {
     throw new ExpressError("AI generation failed. Please try again.", 502);
   }
 
-  // Fallback parsing object initialize karein
-  let parsedResponse = { message: "Website updated successfully", code: "" };
-
+  let parsedResponse;
   try {
-    // 1. Pehle standard JSON parsing check karein
     parsedResponse = parseAIWebsiteResponse(aiResponse);
-  } catch (e) {
-    console.warn(
-      "Standard parsing failed on update, applying robust cleanup...",
-      e,
+  } catch (error) {
+    console.warn("AI response parsing failed on update:", error.message);
+    throw new ExpressError(
+      "AI updated response was invalid or did not contain a valid pageData object. Please try again.",
+      502,
     );
-
-    // 2. FALLBACK LAYER: Markdown aur raw strings saaf karein
-    let cleanText = aiResponse.trim();
-
-    if (cleanText.startsWith("```")) {
-      cleanText = cleanText
-        .replace(/^```[a-zA-Z]*\n/, "")
-        .replace(/\n```$/, "")
-        .trim();
-    }
-
-    // Agar direct code key mojood hai text mein
-    if (cleanText.includes('"code":') || cleanText.includes("'code':")) {
-      try {
-        const directJson = JSON.parse(cleanText);
-        parsedResponse.code = directJson.code;
-        if (directJson.message) parsedResponse.message = directJson.message;
-      } catch (innerError) {
-        parsedResponse.code = cleanText;
-      }
-    } else {
-      // Agar direct code/HTML string bhej di hai AI ne
-      parsedResponse.code = cleanText;
-    }
   }
 
-  // Safety Check: Code khali nahi hona chahiye
-  if (!parsedResponse.code || parsedResponse.code.trim() === "") {
+  const { message, pageData } = parsedResponse;
+
+  if (
+    !pageData ||
+    typeof pageData !== "object" ||
+    !Array.isArray(pageData.sections)
+  ) {
     throw new ExpressError(
-      "AI updated code was empty or invalid. Please try again.",
+      "AI updated pageData was empty or invalid. Please try again.",
       502,
     );
   }
 
   try {
-    // Website document update karein
-    website.title = parsedResponse.message.slice(0, 100);
-    website.latestCode = parsedResponse.code; // Yeh ab guaranteed clean code/HTML hoga
+    website.title = String(
+      pageData.meta?.title || message || website.title,
+    ).slice(0, 100);
+    website.pageData = pageData;
 
     website.conversations.push(
       { role: "user", content: prompt },
-      { role: "ai", content: parsedResponse.message },
+      { role: "ai", content: message },
     );
     await website.save();
 
-    // User credits deduct karein
     user.credits -= UPDATE_COST;
     await user.save();
 
-    // Sahi clean object frontend ko return karein
     return res.status(200).json(
       new ApiResponse(
         200,
         {
           websiteId: website._id,
+          pageData: website.pageData,
           title: website.title,
-          latestCode: website.latestCode,
           conversations: website.conversations,
           updatedAt: website.updatedAt,
           credits: user.credits,
@@ -439,12 +349,80 @@ export const updateWebsite = wrapAsync(async (req, res) => {
     );
   }
 });
+
+/**
+ * Persist the editor's current pageData (the Single Source of Truth) for a
+ * website. This is NOT an AI call — it is a direct save of the structured
+ * JSON the user has been editing in the canvas. Free of charge.
+ *
+ * Expects: { websiteId, pageData } — validated by savePageDataValidation.
+ */
+export const savePageData = wrapAsync(async (req, res) => {
+  const { websiteId, pageData } = req.body;
+
+  const website = await Website.findById(websiteId);
+  if (!website) {
+    throw new ExpressError("Website not found", 404);
+  }
+
+  if (website.user.toString() !== req.user.id.toString()) {
+    throw new ExpressError("Unauthorized", 403);
+  }
+
+  if (
+    !pageData ||
+    typeof pageData !== "object" ||
+    !Array.isArray(pageData.sections)
+  ) {
+    throw new ExpressError("Invalid pageData payload", 400);
+  }
+
+  website.pageData = pageData;
+
+  // Keep the title in sync with the page's meta title when present.
+  if (pageData.meta && typeof pageData.meta.title === "string") {
+    const nextTitle = pageData.meta.title.trim();
+    if (nextTitle) {
+      website.title = nextTitle.slice(0, 100);
+    }
+  }
+
+  await website.save();
+
+  return res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        websiteId: website._id,
+        pageData: website.pageData,
+        title: website.title,
+        updatedAt: website.updatedAt,
+        credits: SAVE_PAGE_DATA_COST,
+      },
+      "Page data saved successfully",
+    ),
+  );
+});
+
 export const getUserWebsites = wrapAsync(async (req, res) => {
   const websites = await Website.find({ user: req.user.id })
-    .select("title slug latestCode deployed deployedUrl createdAt updatedAt")
+    .select("title slug pageData deployed deployedUrl createdAt updatedAt")
     .sort({ createdAt: -1 });
 
-  return res.status(200).json(new ApiResponse(200, websites));
+  // Map to a lightweight payload — strip the full pageData and expose only a
+  // thumbnail image URL extracted from the sections.
+  const list = websites.map((w) => ({
+    _id: w._id,
+    title: w.title,
+    slug: w.slug,
+    deployed: w.deployed,
+    deployedUrl: w.deployedUrl,
+    thumbnail: extractThumbnailFromPageData(w.pageData),
+    createdAt: w.createdAt,
+    updatedAt: w.updatedAt,
+  }));
+
+  return res.status(200).json(new ApiResponse(200, list));
 });
 
 export const getWebsiteById = wrapAsync(async (req, res) => {
@@ -462,46 +440,23 @@ export const getWebsiteById = wrapAsync(async (req, res) => {
   return res.status(200).json(new ApiResponse(200, website));
 });
 
-// Extract the first <img src="..."> URL from an HTML string.
-// Used to generate a lightweight thumbnail for the public showcase
-// without sending the full (heavy) latestCode to the frontend.
-function extractThumbnailFromCode(html = "") {
-  if (!html) return "";
-
-  // Match the first <img ... src="..." ...> occurrence (single/double quotes)
-  const imgMatch = html.match(/<img[^>]*\ssrc=["']([^"']+)["']/i);
-  if (imgMatch && imgMatch[1]) {
-    return imgMatch[1];
-  }
-
-  // Fallback: try to find an OpenGraph og:image meta tag
-  const ogMatch = html.match(
-    /<meta[^>]+property=["']og:image["'][^>]*content=["']([^"']+)["']/i,
-  );
-  if (ogMatch && ogMatch[1]) {
-    return ogMatch[1];
-  }
-
-  return "";
-}
-
 // PUBLIC endpoint — returns all deployed websites for the showcase gallery.
 // No authentication required. Only lightweight metadata is returned
 // (title, slug, deployedUrl, thumbnail, createdAt + creator name/avatar).
 export const getShowcaseWebsites = wrapAsync(async (req, res) => {
   const websites = await Website.find({ deployed: true })
     .populate("user", "name avatar")
-    .select("title slug deployedUrl latestCode createdAt user")
+    .select("title slug pageData deployedUrl createdAt user")
     .sort({ createdAt: -1 });
 
-  // Map to a lightweight payload — strip the heavy latestCode and
-  // expose only a thumbnail image URL extracted from the HTML.
+  // Map to a lightweight payload — strip the full pageData and expose only a
+  // thumbnail image URL extracted from the sections.
   const showcase = websites.map((w) => ({
     _id: w._id,
     title: w.title,
     slug: w.slug,
     deployedUrl: w.deployedUrl,
-    thumbnail: extractThumbnailFromCode(w.latestCode),
+    thumbnail: extractThumbnailFromPageData(w.pageData),
     createdAt: w.createdAt,
     creator: w.user ? { name: w.user.name, avatar: w.user.avatar } : null,
   }));
@@ -515,7 +470,7 @@ export const getLiveWebsite = wrapAsync(async (req, res) => {
   const { websiteId } = req.params;
 
   const website = await Website.findById(websiteId).select(
-    "title latestCode deployed deployedUrl slug updatedAt",
+    "title pageData deployed deployedUrl slug updatedAt",
   );
   if (!website) {
     throw new ExpressError("Website not found", 404);
@@ -528,28 +483,83 @@ export const getLiveWebsite = wrapAsync(async (req, res) => {
   return res.status(200).json(new ApiResponse(200, website));
 });
 
+/**
+ * Soft-delete a project (website).
+ *
+ * REST: DELETE /api/website/website/:websiteId  (auth required)
+ *
+ * Security:
+ *  - IsAuth middleware verifies the JWT and loads req.user (authentication).
+ *  - We confirm the project's `user` matches req.user.id (authorization) —
+ *    only the project owner may delete.
+ *  - websiteId is validated as a real ObjectId before hitting the DB.
+ *
+ * Soft-delete strategy:
+ *  - We never hard-remove the document. We set isDeleted=true + deletedAt=now
+ *    and flip deployed=false / deployedUrl="" so any live site goes offline
+ *    immediately. The model's pre-find hook then hides it from every read
+ *    query (dashboard, showcase, live-site, editor), preserving referential
+ *    integrity for audit/analytics/recovery.
+ *
+ * Cascading (no orphaned data):
+ *  - conversations[] and pageData are EMBEDDED in the Website document, so
+ *    they are hidden/purged together with the parent — nothing to orphan.
+ *  - The live deployment is taken offline (deployed=false) in the same save.
+ *  - If standalone collections (tasks, assets, roles) are introduced later,
+ *    cascade their soft-delete inside this handler before responding.
+ *
+ * Idempotency:
+ *  - We look the document up INCLUDING already-soft-deleted ones (via an
+ *    explicit isDeleted filter that bypasses the auto-exclude hook). If it
+ *    is already deleted we simply return success, so a retried request after
+ *    a lost response does not surface a confusing 404 to the user.
+ */
 export const deleteWebsite = wrapAsync(async (req, res) => {
   const { websiteId } = req.params;
 
-  const website = await Website.findById(websiteId);
+  if (!mongoose.isValidObjectId(websiteId)) {
+    throw new ExpressError("Invalid website ID", 400);
+  }
+
+  // Include soft-deleted docs so a retried delete is idempotent, not a 404.
+  const website = await Website.findOne({
+    _id: websiteId,
+    isDeleted: { $in: [true, false] },
+  });
+
   if (!website) {
     throw new ExpressError("Website not found", 404);
   }
 
+  // Authorization — only the project owner may delete.
   if (website.user.toString() !== req.user.id.toString()) {
     throw new ExpressError("Unauthorized", 403);
   }
 
-  await Website.findByIdAndDelete(websiteId);
+  // Already soft-deleted → treat as success (idempotent).
+  if (website.isDeleted) {
+    return res
+      .status(200)
+      .json(
+        new ApiResponse(200, { websiteId }, "Website deleted successfully"),
+      );
+  }
+
+  // Soft-delete + take the live deployment offline in one atomic save.
+  website.isDeleted = true;
+  website.deletedAt = new Date();
+  website.deployed = false;
+  website.deployedUrl = "";
+  await website.save();
 
   return res
     .status(200)
-    .json(new ApiResponse(200, null, "Website deleted successfully"));
+    .json(new ApiResponse(200, { websiteId }, "Website deleted successfully"));
 });
 
 export const deployWebsite = wrapAsync(async (req, res) => {
   const { websiteId } = req.params;
-  const { code } = req.body || {};
+  const { pageData } = req.body || {};
 
   const website = await Website.findById(websiteId);
   if (!website) {
@@ -560,19 +570,22 @@ export const deployWebsite = wrapAsync(async (req, res) => {
     throw new ExpressError("Unauthorized", 403);
   }
 
-  if (typeof code === "string" && code.trim()) {
-    website.latestCode = code;
+  // If the client sends the latest pageData at deploy time, persist it so the
+  // live site always reflects the user's most recent editor state.
+  if (
+    pageData &&
+    typeof pageData === "object" &&
+    Array.isArray(pageData.sections)
+  ) {
+    website.pageData = pageData;
+    if (pageData.meta && typeof pageData.meta.title === "string") {
+      const nextTitle = pageData.meta.title.trim();
+      if (nextTitle) website.title = nextTitle.slice(0, 100);
+    }
   }
 
   if (!website.slug) {
-    website.slug =
-      website.title
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-|-$/g, "") +
-      "-" +
-      websiteId +
-      Date.now();
+    website.slug = buildSlug(website.title, websiteId);
   }
 
   const hostingBaseUrl =
@@ -588,7 +601,7 @@ export const deployWebsite = wrapAsync(async (req, res) => {
       {
         websiteId: website._id,
         title: website.title,
-        latestCode: website.latestCode,
+        pageData: website.pageData,
         deployed: website.deployed,
         deployedUrl: website.deployedUrl,
         updatedAt: website.updatedAt,

@@ -275,12 +275,23 @@ const App = () => {
   }, [showIntro]);
 
   return (
-    <>
+    // Root wrapper applies the global font stack via a single string literal.
+    // NOTE: the entire font stack MUST be enclosed in one string literal —
+    // writing `fontFamily: 'Inter', ui-sans-serif, system-ui, sans-serif`
+    // (bare identifiers) breaks esbuild during dependency scanning with
+    // `Expected "}" but found "-"` because the parser treats the hyphenated
+    // tokens as invalid JSX expression syntax.
+    <div
+      style={{
+        fontFamily: "'Inter', ui-sans-serif, system-ui, sans-serif",
+      }}
+      className="min-h-screen"
+    >
       <AppRouter />
       <AnimatePresence>
         {showIntro && <IntroOverlay onEnter={handleEnter} />}
       </AnimatePresence>
-    </>
+    </div>
   );
 };
 

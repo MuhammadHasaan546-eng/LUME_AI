@@ -1,7 +1,9 @@
 import axios from "axios";
 import { createAsyncThunk } from "@reduxjs/toolkit";
 
-const BASE_URL = import.meta.env.VITE_BASE_URL || "http://localhost:3000";
+// Empty string => requests are same-origin relative (/api/...) and go
+// through the Vite dev-server proxy, avoiding cert/CORS issues.
+const BASE_URL = import.meta.env.VITE_BASE_URL || "";
 
 const WEBSITE_API_URL = `${BASE_URL}/api/website`;
 
@@ -49,6 +51,38 @@ export const updateWebsite = createAsyncThunk(
     } catch (error) {
       const message = getErrorMessage(error, "Failed to update website");
       console.error("Update Website Error:", message);
+      return rejectWithValue(message);
+    }
+  },
+);
+
+/**
+ * Persist the editor's current pageData (the JSON Single Source of Truth) for
+ * a website. This is NOT an AI call — it is a direct save of the structured
+ * page definition the user has been editing in the canvas. Free of charge.
+ *
+ * @param {string} websiteId - the website document id
+ * @param {object} pageData  - the full pageData object (schemaVersion, meta,
+ *                             header, sections[], footer)
+ */
+export const savePageData = createAsyncThunk(
+  "website/savePageData",
+  async ({ websiteId, pageData }, { rejectWithValue }) => {
+    try {
+      const res = await axios.put(
+        `${WEBSITE_API_URL}/website/save-page-data`,
+        { websiteId, pageData },
+        {
+          headers: {
+            "Content-Type": "application/json",
+          },
+          withCredentials: true,
+        },
+      );
+      return res.data;
+    } catch (error) {
+      const message = getErrorMessage(error, "Failed to save page data");
+      console.error("Save Page Data Error:", message);
       return rejectWithValue(message);
     }
   },
@@ -107,12 +141,11 @@ export const deleteWebsite = createAsyncThunk(
 
 export const deployWebsite = createAsyncThunk(
   "website/deployWebsite",
-  async ({ websiteId, code }, { rejectWithValue }) => {
+  async ({ websiteId, pageData }, { rejectWithValue }) => {
     try {
       const res = await axios.post(
         `${WEBSITE_API_URL}/website/${websiteId}/deploy`,
-        { code },
-
+        { pageData },
         {
           headers: {
             "Content-Type": "application/json",

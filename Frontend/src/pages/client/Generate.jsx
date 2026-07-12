@@ -1,17 +1,65 @@
-import React, { useState } from "react";
-import { motion } from "framer-motion";
-import { ArrowLeft, RefreshCw, Sparkles, Zap } from "lucide-react";
+import React, { useEffect, useRef, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { ArrowLeft, Loader2, Sparkles, Zap } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { toast } from "sonner";
 import { generateWebsite } from "@/api/website";
 import { clearWebsiteError } from "@/store/website";
 
+const PROGRESS_STAGES = [
+  { threshold: 0, label: "Analyzing your prompt..." },
+  { threshold: 25, label: "Designing layout structure..." },
+  { threshold: 50, label: "Generating components..." },
+  { threshold: 75, label: "Styling and theming..." },
+  { threshold: 92, label: "Finalizing your website..." },
+];
+
+const getStageLabel = (progress) => {
+  const stage = [...PROGRESS_STAGES]
+    .reverse()
+    .find((s) => progress >= s.threshold);
+  return stage ? stage.label : PROGRESS_STAGES[0].label;
+};
+
 const GeneratePage = () => {
   const navigate = useNavigate();
   const dispatch = useDispatch();
   const { isLoading, error } = useSelector((state) => state.website);
   const [prompt, setPrompt] = useState("");
+  const [progress, setProgress] = useState(0);
+  const intervalRef = useRef(null);
+
+  useEffect(() => {
+    if (isLoading) {
+      setProgress(0);
+      intervalRef.current = setInterval(() => {
+        setProgress((prev) => {
+          if (prev >= 95) return prev;
+          // Ease out: slow down as it approaches 95%
+          const remaining = 95 - prev;
+          const increment = Math.max(0.5, remaining * 0.08);
+          return Math.min(95, prev + increment);
+        });
+      }, 350);
+    } else {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+      if (progress > 0 && progress < 100) {
+        setProgress(100);
+      }
+    }
+
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading]);
 
   const handleGenerate = async (e) => {
     e.preventDefault();
@@ -28,9 +76,11 @@ const GeneratePage = () => {
         throw new Error("Website generated, but website id was not returned.");
       }
 
+      setProgress(100);
       toast.success(response.message || "Website generated successfully!");
       navigate(`/editor/${websiteId}`);
     } catch (err) {
+      setProgress(0);
       toast.error(err?.message || err || "Failed to generate website.");
     }
   };
@@ -114,6 +164,50 @@ const GeneratePage = () => {
               </motion.div>
             )}
 
+            <AnimatePresence>
+              {isLoading && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="overflow-hidden"
+                >
+                  <div className="rounded-2xl border border-purple-500/20 bg-purple-500/5 p-4">
+                    <div className="mb-2 flex items-center justify-between">
+                      <div className="flex items-center gap-2 text-sm font-medium text-purple-300">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <AnimatePresence mode="wait">
+                          <motion.span
+                            key={getStageLabel(progress)}
+                            initial={{ opacity: 0, y: 6 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -6 }}
+                            transition={{ duration: 0.25 }}
+                          >
+                            {getStageLabel(progress)}
+                          </motion.span>
+                        </AnimatePresence>
+                      </div>
+                      <span className="text-xs font-semibold tabular-nums text-muted-foreground">
+                        {Math.round(progress)}%
+                      </span>
+                    </div>
+
+                    <div className="relative h-2 w-full overflow-hidden rounded-full bg-muted/60">
+                      <motion.div
+                        className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-[#6d28d9] via-[#7c3aed] to-[#2563eb]"
+                        initial={{ width: 0 }}
+                        animate={{ width: `${progress}%` }}
+                        transition={{ duration: 0.35, ease: "easeOut" }}
+                      >
+                        <div className="absolute inset-0 animate-pulse bg-white/20" />
+                      </motion.div>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             <motion.button
               type="submit"
               disabled={isLoading || !prompt.trim()}
@@ -127,7 +221,7 @@ const GeneratePage = () => {
               <div className="absolute inset-0 bg-white/10 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
               {isLoading ? (
                 <>
-                  <RefreshCw className="relative z-10 h-4 w-4 animate-spin" />
+                  <Loader2 className="relative z-10 h-4 w-4 animate-spin" />
                   <span className="relative z-10">Generating website...</span>
                 </>
               ) : (

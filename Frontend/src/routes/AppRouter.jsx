@@ -6,6 +6,7 @@ import { CheckAuth } from "@/components/Auth/CheckAuth";
 import Dashboard from "@/pages/client/Dashboard";
 import GeneratePage from "@/pages/client/Generate";
 import EditorPage from "@/pages/client/Editer";
+import VisualCanvasEditor from "@/components/client/VisualCanvasEditor";
 import LiveSite from "@/pages/public/LiveSite";
 import Price from "@/pages/public/Price";
 import Features from "@/pages/public/Features";
@@ -94,6 +95,17 @@ export const AppRouter = () => {
       element: (
         <CheckAuth>
           <EditorPage />
+        </CheckAuth>
+      ),
+      loader: authLoader,
+    },
+    {
+      // Visual Canvas Editor — renders the LIVE website UI directly inside the
+      // canvas workspace (no code / file tree). Auth-protected like the editor.
+      path: "canvas-editor",
+      element: (
+        <CheckAuth>
+          <VisualCanvasEditor />
         </CheckAuth>
       ),
       loader: authLoader,

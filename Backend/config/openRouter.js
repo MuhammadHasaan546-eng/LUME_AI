@@ -43,8 +43,53 @@ function extractJsonObject(text) {
       throw new Error("AI response does not contain a JSON object");
     }
 
-    return JSON.parse(cleaned.slice(start, end + 1));
+    try {
+      return JSON.parse(cleaned.slice(start, end + 1));
+    } catch {
+      const rawCode = extractJsonStringField(cleaned, "code");
+      if (rawCode) {
+        return {
+          message:
+            extractJsonStringField(cleaned, "message") ||
+            "Website generated successfully",
+          code: decodeJsonEscapes(rawCode),
+        };
+      }
+      throw new Error("AI response does not contain a parseable JSON object");
+    }
   }
+}
+
+function extractJsonStringField(text, fieldName) {
+  const marker = `"${fieldName}"`;
+  const markerIndex = text.indexOf(marker);
+  if (markerIndex === -1) return "";
+
+  const colonIndex = text.indexOf(":", markerIndex + marker.length);
+  if (colonIndex === -1) return "";
+
+  let quoteIndex = colonIndex + 1;
+  while (/\s/.test(text[quoteIndex] || "")) quoteIndex += 1;
+  if (text[quoteIndex] !== '"') return "";
+
+  let result = "";
+  let escaped = false;
+  for (let i = quoteIndex + 1; i < text.length; i += 1) {
+    const char = text[i];
+    if (escaped) {
+      result += `\\${char}`;
+      escaped = false;
+      continue;
+    }
+    if (char === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (char === '"') return result;
+    result += char;
+  }
+
+  return result;
 }
 
 function extractHtmlDocument(text) {
@@ -56,17 +101,79 @@ function extractHtmlDocument(text) {
     .replace(/```html/gi, "")
     .replace(/```/g, "")
     .trim();
-  const start = cleaned.search(/<!doctype html>|<html[\s>]/i);
-  const end = cleaned.lastIndexOf("</html>");
 
-  if (start === -1 || end === -1 || end <= start) {
-    throw new Error("AI response does not contain a full HTML document");
+  const start = cleaned.search(/<!doctype html>|<html[\s>]/i);
+
+  // No HTML document at all.
+  if (start === -1) {
+    throw new Error("AI response does not contain an HTML document");
   }
 
-  return cleaned.slice(start, end + "</html>".length).trim();
+  // Find the closing </html> tag if present. If the response was truncated
+  // (common with long generations), we still salvage everything from the
+  // opening tag to the end and auto-close the document so it renders.
+  const end = cleaned.toLowerCase().lastIndexOf("</html>");
+
+  let html;
+  if (end !== -1 && end > start) {
+    html = cleaned.slice(start, end + "</html>".length);
+  } else {
+    // Truncated response — take the remainder and repair it.
+    html = cleaned.slice(start);
+    html = repairTruncatedHtml(html);
+  }
+  return html.trim();
 }
 
-function decodeJsonEscapes(value) {
+/**
+ * Repair a truncated HTML document so it still renders in an iframe.
+ * Closes any unclosed <style>, <script>, <body> and <html> tags.
+ */
+function repairTruncatedHtml(html) {
+  let repaired = html.trimEnd();
+
+  const lower = repaired.toLowerCase();
+
+  // Close an unclosed <script> tag first (most likely to break rendering).
+  if (/<script[\s>]/i.test(repaired) && !/<\/script>\s*$/i.test(repaired)) {
+    repaired += "\n</script>";
+  }
+
+  // Close an unclosed <style> tag.
+  if (/<style[\s>]/i.test(repaired) && !/<\/style>\s*$/i.test(repaired)) {
+    repaired += "\n</style>";
+  }
+
+  // Close <body> and <html> if missing.
+  if (
+    /<body[\s>]/i.test(repaired) &&
+    !/<\/body>\s*(<\/html>)?\s*$/i.test(repaired)
+  ) {
+    repaired += "\n</body>";
+  }
+  if (/<html[\s>]/i.test(repaired) && !/<\/html>\s*$/i.test(repaired)) {
+    repaired += "\n</html>";
+  }
+
+  // If there was never an <html> wrapper at all, wrap the fragment.
+  if (!/<html[\s>]/i.test(repaired)) {
+    repaired = `<!DOCTYPE html>\n<html lang="en">\n<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"></head>\n<body>\n${repaired}\n</body>\n</html>`;
+  }
+
+  return repaired;
+}
+
+/**
+ * Decode JSON string escape sequences (e.g. \" \\n \\t) back to their
+ * literal characters. This is ONLY needed for code extracted via regex
+ * from raw (un-parsed) AI text. Code that has already passed through
+ * JSON.parse() is already correctly decoded and MUST NOT be passed through
+ * this function again — doing so corrupts legitimate JS escape sequences
+ * (e.g. a /\n/ regex becomes a broken literal newline, causing
+ * "Unexpected token" SyntaxErrors in the iframe srcDoc preview).
+ */
+export function decodeJsonEscapes(value) {
+  if (typeof value !== "string") return value;
   return value
     .replace(/\\r\\n/g, "\n")
     .replace(/\\n/g, "\n")
@@ -87,7 +194,12 @@ export function cleanGeneratedHtml(code) {
     .replace(/```$/i, "")
     .trim();
 
-  cleaned = decodeJsonEscapes(cleaned);
+  // NOTE: decodeJsonEscapes() is intentionally NOT called here. This
+  // function runs on code that has already been JSON.parse()'d in the
+  // happy path, so the escapes are already decoded. Re-decoding would
+  // mangle valid JS (regexes, template literals) and break the preview.
+  // decodeJsonEscapes is applied only at the regex-fallback extraction
+  // sites in the website controller, where raw (un-parsed) text is used.
 
   const htmlStart = cleaned.search(/<!doctype html>|<html[\s>]/i);
   if (htmlStart !== -1) {
@@ -109,170 +221,187 @@ export function cleanGeneratedHtml(code) {
   return cleaned;
 }
 
+/**
+ * Parse the AI response into { message, pageData }.
+ *
+ * The AI is now instructed to return a JSON object with two fields:
+ *   { "message": "...", "pageData": { ...structured page definition... } }
+ *
+ * We also accept the case where the pageData object is returned at the top
+ * level (i.e. the AI omits the wrapper and returns the schema directly).
+ * The frontend's normalizePageData() is the final safety net, so here we
+ * only validate the minimal shape (sections must be an array).
+ */
 export function parseAIWebsiteResponse(text) {
-  let parsed;
+  if (typeof text !== "string" || !text.trim()) {
+    throw new Error("AI response is empty");
+  }
 
+  let parsed;
   try {
     parsed = extractJsonObject(text);
   } catch (jsonError) {
-    const code = extractHtmlDocument(text);
-
-    return {
-      message: "Website generated successfully",
-      code: cleanGeneratedHtml(code),
-    };
+    throw new Error(
+      "AI response does not contain a parseable JSON object with pageData",
+    );
   }
 
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new Error("AI JSON response must be an object");
   }
 
-  if (typeof parsed.message !== "string" || !parsed.message.trim()) {
-    throw new Error("AI JSON response is missing a message string");
+  const message =
+    typeof parsed.message === "string" && parsed.message.trim()
+      ? parsed.message.trim()
+      : "Website generated successfully";
+
+  // Accept pageData nested under a "pageData" key, OR returned at the top
+  // level (schemaVersion + sections present directly on the root object).
+  let pageData = null;
+  if (parsed.pageData && typeof parsed.pageData === "object") {
+    pageData = parsed.pageData;
+  } else if (parsed.schemaVersion && Array.isArray(parsed.sections)) {
+    pageData = parsed;
   }
 
-  if (typeof parsed.code !== "string" || !parsed.code.trim()) {
-    throw new Error("AI JSON response is missing a code string");
+  if (
+    !pageData ||
+    typeof pageData !== "object" ||
+    !Array.isArray(pageData.sections)
+  ) {
+    throw new Error("AI response does not contain a valid pageData object");
   }
 
-  return {
-    message: parsed.message.trim(),
-    code: cleanGeneratedHtml(parsed.code),
-  };
+  return { message, pageData };
 }
 
+/**
+ * Build a mock pageData response used when OpenRouter is unavailable.
+ *
+ * Returns a JSON string shaped exactly like a real AI response so the rest of
+ * the pipeline (parseAIWebsiteResponse → controller → frontend) can run without
+ * any special-casing. The mock includes a hero, features and CTA section so the
+ * editor preview is non-trivial.
+ *
+ * @param {string} reason - human readable reason for the fallback.
+ * @returns {string} JSON string with { message, pageData }.
+ */
 function buildMockWebsiteResponse(reason = "OpenRouter is unavailable") {
+  const safeReason = String(reason).replace(/</g, "<");
   return JSON.stringify({
-    message: `Mock website generated because ${reason}.`,
-    code: `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Lume Offline Preview</title>
-  <style>
-    :root {
-      color-scheme: dark;
-      --bg: #0b1020;
-      --card: rgba(20, 28, 48, 0.88);
-      --accent: #4c7294;
-      --accent-2: #6fb1d6;
-      --text: #f5f7fb;
-      --muted: #b6c2d1;
-      --border: rgba(255, 255, 255, 0.1);
-    }
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      font-family: system-ui, sans-serif;
-      min-height: 100vh;
-      background: radial-gradient(circle at top, #182746 0%, var(--bg) 55%);
-      color: var(--text);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 24px;
-    }
-    .card {
-      width: min(720px, 100%);
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 24px;
-      padding: 32px;
-      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
-    }
-    .badge {
-      display: inline-block;
-      padding: 8px 12px;
-      border-radius: 999px;
-      background: rgba(111, 177, 214, 0.14);
-      color: var(--accent-2);
-      font-size: 14px;
-      margin-bottom: 16px;
-    }
-    h1 {
-      margin: 0 0 12px;
-      font-size: clamp(2rem, 4vw, 3.25rem);
-      line-height: 1.1;
-    }
-    p {
-      color: var(--muted);
-      line-height: 1.7;
-      font-size: 1rem;
-    }
-    .actions {
-      display: flex;
-      gap: 12px;
-      flex-wrap: wrap;
-      margin-top: 24px;
-    }
-    button, a {
-      border: 0;
-      border-radius: 12px;
-      padding: 14px 18px;
-      font: inherit;
-      text-decoration: none;
-      cursor: pointer;
-      transition: transform 0.2s ease, opacity 0.2s ease;
-    }
-    button {
-      background: var(--accent);
-      color: white;
-    }
-    a {
-      background: transparent;
-      color: var(--text);
-      border: 1px solid var(--border);
-    }
-    button:hover, a:hover { transform: translateY(-1px); opacity: 0.95; }
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 12px;
-      margin-top: 28px;
-    }
-    .panel {
-      padding: 16px;
-      border-radius: 16px;
-      background: rgba(255, 255, 255, 0.04);
-      border: 1px solid var(--border);
-    }
-    .panel strong { display: block; margin-bottom: 8px; }
-    @media (max-width: 768px) {
-      .card { padding: 24px; }
-      .grid { grid-template-columns: 1fr; }
-    }
-  </style>
-</head>
-<body>
-  <main class="card">
-    <span class="badge">Offline fallback active</span>
-    <h1>Lume is connected, but OpenRouter is unreachable.</h1>
-    <p>
-      Your backend and database are working. This preview is returned so you can
-      keep testing the editor flow while the AI provider is unavailable.
-    </p>
-    <div class="actions">
-      <button onclick="alert('Frontend, backend, and JavaScript are all working.')">Test interaction</button>
-      <a href="https://openrouter.ai/" target="_blank" rel="noreferrer">OpenRouter status</a>
-    </div>
-    <section class="grid">
-      <article class="panel">
-        <strong>Backend</strong>
-        <span>API routes are responding normally.</span>
-      </article>
-      <article class="panel">
-        <strong>Database</strong>
-        <span>Website records can still be stored and updated.</span>
-      </article>
-      <article class="panel">
-        <strong>AI Provider</strong>
-        <span>${reason.replace(/</g, "&lt;")}</span>
-      </article>
-    </section>
-  </main>
-</body>
-</html>`,
+    message: `Mock website generated because ${safeReason}.`,
+    pageData: {
+      schemaVersion: 1,
+      meta: {
+        title: "Lume Offline Preview",
+        description:
+          "A fallback page generated while the AI provider is unavailable.",
+        lang: "en",
+        theme: {
+          primary: "#4c7294",
+          accent: "#6fb1d6",
+          background: "#0b1020",
+          text: "#f5f7fb",
+          muted: "#b6c2d1",
+          radius: "16px",
+          font: "system-ui, sans-serif",
+        },
+      },
+      header: {
+        brand: "Lume",
+        logoText: "Lume",
+        links: [
+          { label: "Features", href: "#features" },
+          { label: "Pricing", href: "#pricing" },
+          { label: "Contact", href: "#contact" },
+        ],
+        ctaLabel: "Get started",
+        ctaHref: "#cta",
+      },
+      sections: [
+        {
+          id: "mock-hero",
+          type: "hero",
+          props: {
+            eyebrow: "Offline fallback active",
+            title: "Lume is connected, but OpenRouter is unreachable.",
+            subtitle:
+              "Your backend and database are working. This preview is returned so you can keep testing the editor flow while the AI provider is unavailable.",
+            primaryCta: { label: "Test interaction", href: "#" },
+            secondaryCta: {
+              label: "OpenRouter status",
+              href: "https://openrouter.ai/",
+            },
+            image: {
+              src: "",
+              alt: "",
+            },
+          },
+        },
+        {
+          id: "mock-features",
+          type: "features",
+          props: {
+            eyebrow: "System status",
+            title: "What's still working",
+            items: [
+              {
+                icon: "server",
+                title: "Backend",
+                description: "API routes are responding normally.",
+              },
+              {
+                icon: "database",
+                title: "Database",
+                description: "Website records can still be stored and updated.",
+              },
+              {
+                icon: "cpu",
+                title: "AI Provider",
+                description: safeReason,
+              },
+            ],
+          },
+        },
+        {
+          id: "mock-cta",
+          type: "cta",
+          props: {
+            title: "Ready when you are",
+            subtitle:
+              "Once the AI provider is back online, regenerate this page to get a fresh design.",
+            primaryCta: { label: "Regenerate", href: "#" },
+            secondaryCta: { label: "Back to dashboard", href: "/" },
+          },
+        },
+      ],
+      footer: {
+        brand: "Lume",
+        description:
+          "AI-powered website builder. This is an offline fallback preview.",
+        columns: [
+          {
+            title: "Product",
+            links: [
+              { label: "Features", href: "#features" },
+              { label: "Pricing", href: "#pricing" },
+            ],
+          },
+          {
+            title: "Company",
+            links: [
+              { label: "About", href: "#" },
+              { label: "Contact", href: "#contact" },
+            ],
+          },
+        ],
+        socials: [
+          { label: "GitHub", href: "https://github.com", icon: "github" },
+          { label: "Twitter", href: "https://twitter.com", icon: "twitter" },
+        ],
+        copyright: "Lume",
+      },
+    },
   });
 }
 
@@ -314,15 +443,15 @@ async function tryModel(model, apiKey, clientPrompt) {
           {
             role: "system",
             content:
-              'Return only valid JSON with exactly two string fields: "message" and "code". The code value must contain one complete HTML document. Do not include markdown, prose, reasoning, or text outside the JSON object.',
+              'You are a senior frontend architect and UI/UX engineer. You generate STRUCTURED website definitions as a JSON "pageData" object — NOT raw HTML or React code. The pageData object is the Single Source of Truth and is rendered by a pre-built React component system. Return ONLY a valid JSON object with exactly two fields: "message" (a short confirmation string) and "pageData" (the structured page definition). The pageData object MUST have this exact top-level shape: { "schemaVersion": 1, "meta": { "title", "description", "lang", "theme": { "primary", "mode", "font", "radius" } }, "header": { "id", "type", "brand", "logoText", "links": [{"label","href"}], "ctaLabel", "ctaHref" }, "sections": [ ... ], "footer": { "id", "type", "brand", "columns": [{"title","links":[{"label","href"}]}], "socials": [{"icon","label","href"}] } }. Each item in the sections array MUST have a unique "id" string and a "type" which is one of: "hero", "features", "stats", "gallery", "testimonials", "pricing", "cta", "contact". Section-specific props: hero={eyebrow,title,subtitle,primaryCta:{label,href},secondaryCta:{label,href},image:{src,alt}}; features={eyebrow,title,items:[{icon,title,description}]}; stats={title,items:[{label,value}]}; gallery={eyebrow,title,columns,items:[{src,alt}]}; testimonials={eyebrow,title,items:[{quote,author,role,avatar}]}; pricing={eyebrow,title,plans:[{name,price,period,description,features:[],featured,cta:{label,href}}]}; cta={title,subtitle,primaryCta:{label,href},secondaryCta:{label,href}}; contact={title,subtitle,fields:[{name,label,type,placeholder,required}]}. Use realistic business content (NO lorem ipsum). Use Unsplash image URLs ending with ?auto=format&fit=crop&w=1200&q=80 for all images. Do not include markdown fences, prose, reasoning, or any text outside the JSON object. Keep the JSON compact so it fits within the token limit.',
           },
           {
             role: "user",
-            content: `You are a web development assistant. Your task is to generate HTML, CSS, and JavaScript code for the user's request. The code should be clean, modern, and responsive. Do not include any explanations or comments in the code. strictly follow the rules and style provided by the user.\n\n${clientPrompt}`,
+            content: `You are a website design assistant. Your task is to generate a complete, structured pageData JSON object for the user's request. The pageData will be rendered by a React component system (Hero, Features, Stats, Gallery, Testimonials, Pricing, CTA, Contact sections). Produce realistic, business-ready content with no lorem ipsum. Strictly follow the schema and rules provided by the user.\n\n${clientPrompt}`,
           },
         ],
         temperature: 0.2,
-        max_tokens: 8192,
+        max_tokens: 16000,
       }),
     },
     FETCH_TIMEOUT_MS,
