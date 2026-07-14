@@ -1,0 +1,28 @@
+{
+  "version": 2,
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Cross-Origin-Opener-Policy",
+          "value": "same-origin-allow-popups"
+        },
+        {
+          "key": "Cross-Origin-Embedder-Policy",
+          "value": "require-corp"
+        }
+      ]
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://lume-ai-rfjg.onrender.com/api/:path*"
+    },
+    {
+      "source": "/((?!assets/|.*\\.).*)",
+      "destination": "/index.html"
+    }
+  ]
+}
