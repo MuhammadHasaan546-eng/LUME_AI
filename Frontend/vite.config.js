@@ -43,21 +43,18 @@ export default defineConfig({
   // `server.server.headers`, which Vite silently ignored — so isolation
   // never activated. This is the root cause of the WebContainer fallback.
   server: {
+    // Agar Firebase popup use kar rahe hain, toh COOP headers ko temporarily band karein ya check karein:
     headers: {
-      "Cross-Origin-Opener-Policy": "same-origin",
+      "Cross-Origin-Opener-Policy": "same-origin-allow-popups", // same-origin se badal kar ye karein
       "Cross-Origin-Embedder-Policy": "require-corp",
     },
 
-    // Proxy /api/* to the backend so the browser never talks directly to
-    // https://localhost:3000 (which uses a self-signed cert the browser
-    // rejects with ERR_CERT_AUTHORITY_INVALID). Vite forwards requests
-    // server-side, where the cert is not validated, keeping everything
-    // same-origin so cookies work without CORS/cert headaches.
     proxy: {
       "/api": {
+        // Agar live test kar rahe hain, toh check karein aapka base URL Axios/Fetch me Render ka URL ho
         target: "https://localhost:3000",
         changeOrigin: true,
-        secure: false, // trust the backend's self-signed cert
+        secure: false,
         cookieDomainRewrite: "localhost",
       },
     },
