@@ -8,10 +8,8 @@
  *
  *   - Treats a `pageData` JSON object as the Single Source of Truth.
  *   - Lets the user reorder, add, remove, and duplicate body sections.
- *   - Renders an in-app **Canvas** (visual editor with click-to-select) in
- *     the center column.
  *   - Boots a **WebContainer** with a real multi-file Vite project generated
- *     from the same `pageData` and shows the live preview in the right column.
+ *     from the same `pageData` and shows the live preview as the main content.
  *   - Falls back to a read-only Canvas preview when the WebContainer runtime
  *     is unavailable (no cross-origin isolation / missing API key).
  *   - Exposes an AI Copilot chat panel, a project file-tree, and an
@@ -32,7 +30,6 @@
  * @param {boolean}      isLoading         - AI / deploy loading flag
  * @param {string}       selectedTheme     - "light" | "dark" | "system"
  * @param {(t:string)=>void} onThemeChange - theme switch callback
- * @param {boolean}      isDark            - resolved dark-mode flag
  * ============================================================================
  */
 import React, {
@@ -49,7 +46,6 @@ import {
   ArrowDown,
   Sparkles,
   Eye,
-  Code,
   RefreshCw,
   Monitor,
   Smartphone,
@@ -64,7 +60,6 @@ import {
   Sun,
   Moon,
   MessageSquare,
-  Columns,
   Rocket,
   Laptop,
   Folder,
@@ -72,7 +67,6 @@ import {
   Send,
   Plus,
 } from "lucide-react";
-import MonacoEditor from "@monaco-editor/react";
 import { toast } from "sonner";
 import { Canvas } from "@/editor/Canvas";
 import FileExplorer from "@/components/client/FileExplorer";
@@ -82,7 +76,6 @@ import {
   createSectionId,
   normalizePageData,
   serializePageData,
-  parsePageData,
 } from "@/editor/schema/pageData";
 import {
   getAddableSections,
@@ -304,7 +297,6 @@ function Editor({
   isSaving = false,
   selectedTheme = "system",
   onThemeChange = null,
-  isDark = false,
 }) {
   /* ── pageData state (controlled/uncontrolled) ─────────────────────── */
 
@@ -347,11 +339,9 @@ function Editor({
   const [copied, setCopied] = useState(false);
   const [isCompiling, setIsCompiling] = useState(false);
   const [activeSidebarTab, setActiveSidebarTab] = useState("ai");
-  const [desktopFocusView, setDesktopFocusView] = useState("split");
-  const [mobileActiveView, setMobileActiveView] = useState("editor");
+  const [mobileActiveView, setMobileActiveView] = useState("preview");
   const [selectedSectionId, setSelectedSectionId] = useState(null);
   const [terminalInput, setTerminalInput] = useState("");
-  const [jsonDraft, setJsonDraft] = useState(null);
 
   const chatEndRef = useRef(null);
   const terminalEndRef = useRef(null);
@@ -418,9 +408,6 @@ function Editor({
       ? wcPreviewUrl
       : undefined;
 
-  const editorValue =
-    jsonDraft !== null ? jsonDraft : serializePageData(pageData);
-
   const isBooting =
     wcStatus === "booting" ||
     wcStatus === "mounting" ||
@@ -435,7 +422,6 @@ function Editor({
     try {
       await onPrompt(prompt.trim());
       setPrompt("");
-      setDesktopFocusView("preview");
       if (window.innerWidth < 1024) setMobileActiveView("preview");
     } catch (err) {
       toast.error(err || "Iterative generation failed.");
@@ -447,7 +433,7 @@ function Editor({
     if (wcFallback) {
       setTimeout(() => {
         setIsCompiling(false);
-        toast.success("Canvas refreshed.");
+        toast.success("Preview refreshed.");
       }, 400);
     } else if (wcStatus === "running") {
       updateWebContainerPreview(pageData);
@@ -458,7 +444,6 @@ function Editor({
     } else {
       setTimeout(() => setIsCompiling(false), 400);
     }
-    setDesktopFocusView("preview");
     if (window.innerWidth < 1024) setMobileActiveView("preview");
   };
 
@@ -494,18 +479,6 @@ function Editor({
       await onDeploy(pageData);
     } catch (err) {
       toast.error(err || "Deploy failed. Please try again.");
-    }
-  };
-
-  const handleApplyJson = () => {
-    if (!jsonDraft) return;
-    try {
-      const parsed = parsePageData(jsonDraft);
-      updatePageData(parsed);
-      setJsonDraft(null);
-      toast.success("JSON applied successfully.");
-    } catch (err) {
-      toast.error("Invalid JSON: " + (err?.message || "parse error"));
     }
   };
 
@@ -586,44 +559,7 @@ function Editor({
 
           <div className="hidden h-4 w-[1px] bg-border/60 sm:block" />
 
-          {/* View segmented controls */}
-          <div className="hidden items-center gap-0.5 rounded-xl border border-border/40 bg-muted/40 p-1 lg:flex">
-            <button
-              onClick={() => setDesktopFocusView("code")}
-              className={`flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all ${
-                desktopFocusView === "code"
-                  ? "border border-border/60 bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <Code className="h-3.5 w-3.5" />
-              JSON
-            </button>
-            <button
-              onClick={() => setDesktopFocusView("split")}
-              className={`flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all ${
-                desktopFocusView === "split"
-                  ? "border border-border/60 bg-background text-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <Columns className="h-3.5 w-3.5" />
-              Design
-            </button>
-            <button
-              onClick={() => setDesktopFocusView("preview")}
-              className={`flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-semibold transition-all ${
-                desktopFocusView === "preview"
-                  ? "border border-primary/20 bg-primary/10 font-bold text-primary"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              <Eye className="h-3.5 w-3.5" />
-              Live
-            </button>
-          </div>
-
-          <span className="max-w-[140px] truncate text-xs font-semibold tracking-wide text-foreground sm:max-w-none lg:hidden">
+          <span className="max-w-[140px] truncate text-xs font-semibold tracking-wide text-foreground sm:max-w-none">
             {title}
           </span>
         </div>
@@ -744,19 +680,6 @@ function Editor({
             className={`h-3.5 w-3.5 ${mobileActiveView === "chat" ? "text-[#B94AF4] fill-[#B94AF4]/10" : ""}`}
           />
           AI Copilot
-        </button>
-        <button
-          onClick={() => setMobileActiveView("editor")}
-          className={`flex flex-1 items-center justify-center gap-2 rounded-xl border py-2.5 text-xs font-semibold transition-all ${
-            mobileActiveView === "editor"
-              ? "border-border/80 bg-background text-foreground shadow-sm"
-              : "border-transparent text-muted-foreground hover:text-foreground"
-          }`}
-        >
-          <Code
-            className={`h-3.5 w-3.5 ${mobileActiveView === "editor" ? "text-primary" : ""}`}
-          />
-          Editor
         </button>
         <button
           onClick={() => setMobileActiveView("preview")}
@@ -1087,93 +1010,10 @@ function Editor({
           </div>
         </div>
 
-        {/* COLUMN 2: CENTER (Canvas design OR Monaco JSON) */}
+        {/* COLUMN 2: LIVE PREVIEW (main content) */}
         <div
-          className={`flex h-full min-w-0 flex-1 flex-col border-r border-zinc-200 bg-white transition-colors duration-500 dark:border-zinc-900 dark:bg-[#0C0C0C] ${
-            mobileActiveView === "editor" ? "flex" : "hidden lg:flex"
-          } ${desktopFocusView === "preview" ? "lg:hidden" : "flex"}`}
-        >
-          {/* Editor header */}
-          <div className="flex h-10 min-h-[40px] shrink-0 items-center justify-between border-b border-zinc-200 bg-zinc-50 px-4 transition-colors dark:border-zinc-900/80 dark:bg-[#0E0E10]">
-            <div className="flex items-center gap-2 truncate">
-              {desktopFocusView === "code" ? (
-                <>
-                  <Code className="h-3.5 w-3.5 text-[#4C7294]" />
-                  <span className="truncate font-mono text-xs tracking-wide text-zinc-500 dark:text-zinc-400">
-                    src/data/pageData.json
-                  </span>
-                </>
-              ) : (
-                <>
-                  <Layers className="h-3.5 w-3.5 text-[#4C7294]" />
-                  <span className="truncate font-mono text-xs tracking-wide text-zinc-500 dark:text-zinc-400">
-                    Visual Canvas Editor
-                  </span>
-                </>
-              )}
-            </div>
-            {desktopFocusView === "code" && (
-              <button
-                onClick={handleApplyJson}
-                disabled={!jsonDraft}
-                className="rounded-md bg-[#4C7294]/10 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-[#4C7294] transition-all hover:bg-[#4C7294] hover:text-white disabled:opacity-30"
-              >
-                Apply JSON
-              </button>
-            )}
-          </div>
-
-          {/* Content area */}
-          <div className="relative flex-1 overflow-hidden bg-zinc-50/30 dark:bg-[#0A0A0B]">
-            {desktopFocusView === "code" ? (
-              <MonacoEditor
-                height="100%"
-                language="json"
-                theme={isDark ? "vs-dark" : "light"}
-                value={editorValue}
-                onChange={(value) => setJsonDraft(value || "")}
-                loading={
-                  <div className="flex h-full items-center justify-center font-mono text-xs text-zinc-400">
-                    Loading Monaco editor...
-                  </div>
-                }
-                options={{
-                  automaticLayout: true,
-                  fontFamily:
-                    "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
-                  fontSize: 13,
-                  lineHeight: 22,
-                  minimap: { enabled: false },
-                  padding: { top: 20, bottom: 20 },
-                  scrollBeyondLastLine: false,
-                  smoothScrolling: true,
-                  wordWrap: "on",
-                  wrappingIndent: "indent",
-                }}
-              />
-            ) : (
-              <div className="h-full overflow-y-auto custom-scrollbar">
-                <Canvas
-                  pageData={pageData}
-                  editable
-                  selectedId={selectedSectionId}
-                  onSelect={setSelectedSectionId}
-                  device={previewMode}
-                  className="min-h-full"
-                />
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* COLUMN 3: RIGHT PREVIEW */}
-        <div
-          className={`flex h-full shrink-0 flex-col overflow-hidden bg-zinc-50 p-4 transition-colors duration-500 dark:bg-[#090909] ${
+          className={`flex h-full min-w-0 flex-1 flex-col overflow-hidden bg-zinc-50 p-4 transition-colors duration-500 dark:bg-[#090909] ${
             mobileActiveView === "preview" ? "flex" : "hidden lg:flex"
-          } ${desktopFocusView === "code" ? "lg:hidden" : "flex"} ${
-            desktopFocusView === "split"
-              ? "lg:w-[420px] xl:w-[500px]"
-              : "lg:flex-1"
           }`}
         >
           {/* Preview header */}
@@ -1233,7 +1073,7 @@ function Editor({
                       "Installing dependencies (npm install)..."}
                     {wcStatus === "starting" && "Starting Vite dev server..."}
                     {(isCompiling || (isLoading && !isBooting)) &&
-                      "Syncing canvas nodes..."}
+                      "Syncing preview..."}
                   </span>
                 </MotionDiv>
               )}

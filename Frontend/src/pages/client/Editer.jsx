@@ -37,8 +37,7 @@ const EditorPage = () => {
 
   const { pageData, currentWebsite, isLoading, isSaving, saveError } =
     useSelector((state) => state.website);
-  const { selectedTheme, resolvedTheme } = useSelector((state) => state.theme);
-  const isDark = resolvedTheme === "dark";
+  const { selectedTheme } = useSelector((state) => state.theme);
 
   /* ── Load the website workspace on mount / id change ────────────────── */
   useEffect(() => {
@@ -147,7 +146,6 @@ const EditorPage = () => {
       isSaving={isSaving}
       selectedTheme={selectedTheme}
       onThemeChange={handleThemeChange}
-      isDark={isDark}
     />
   );
 };

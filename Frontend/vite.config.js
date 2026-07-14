@@ -52,7 +52,7 @@ export default defineConfig({
     proxy: {
       "/api": {
         // Agar live test kar rahe hain, toh check karein aapka base URL Axios/Fetch me Render ka URL ho
-        target: "https://localhost:3000",
+        target: "https://lume-ai-rfjg.onrender.com",
         changeOrigin: true,
         secure: false,
         cookieDomainRewrite: "localhost",

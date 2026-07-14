@@ -95,11 +95,14 @@ const websiteSchema = new mongoose.Schema(
 // genuinely needs to read soft-deleted docs — e.g. the delete controller
 // performing an idempotent re-delete — passes an explicit `isDeleted`
 // condition in its filter, which this hook respects and skips.
-websiteSchema.pre(/^find/, function (next) {
+// Mongoose 9 (kareem 3) invokes pre hooks async-first: it strips the trailing
+// callback and no longer passes a `next` function. Declaring the hook as
+// `async` makes Mongoose await it automatically — calling `next()` here would
+// throw "next is not a function" (the param would receive the filter object).
+websiteSchema.pre(/^find/, async function () {
   const filter = this.getFilter();
-  if (filter.isDeleted !== undefined) return next();
+  if (filter.isDeleted !== undefined) return;
   this.where({ isDeleted: { $ne: true } });
-  next();
 });
 
 const Website = mongoose.model("Website", websiteSchema);
