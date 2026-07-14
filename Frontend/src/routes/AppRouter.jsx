@@ -6,6 +6,7 @@ import { CheckAuth } from "@/components/Auth/CheckAuth";
 import Dashboard from "@/pages/client/Dashboard";
 import GeneratePage from "@/pages/client/Generate";
 import EditorPage from "@/pages/client/Editer";
+import CodeWorkspacePage from "@/pages/client/CodeWorkspace";
 import VisualCanvasEditor from "@/components/client/VisualCanvasEditor";
 import LiveSite from "@/pages/public/LiveSite";
 import Price from "@/pages/public/Price";
@@ -95,6 +96,27 @@ export const AppRouter = () => {
       element: (
         <CheckAuth>
           <EditorPage />
+        </CheckAuth>
+      ),
+      loader: authLoader,
+    },
+    {
+      // IDE-style code workspace — file explorer + Monaco editor + terminal.
+      // Boots a default project when no id is supplied, or loads the
+      // website's pageData when a :codeId is provided.
+      path: "code-workspace",
+      element: (
+        <CheckAuth>
+          <CodeWorkspacePage />
+        </CheckAuth>
+      ),
+      loader: authLoader,
+    },
+    {
+      path: "code-workspace/:codeId",
+      element: (
+        <CheckAuth>
+          <CodeWorkspacePage />
         </CheckAuth>
       ),
       loader: authLoader,

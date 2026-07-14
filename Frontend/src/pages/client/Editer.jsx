@@ -14,7 +14,7 @@
  * All editor UI, section management, Canvas, and WebContainer logic lives in
  * the presentational <Editor /> component so it can be mounted anywhere.
  */
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { toast } from "sonner";
@@ -39,13 +39,35 @@ const EditorPage = () => {
     useSelector((state) => state.website);
   const { selectedTheme } = useSelector((state) => state.theme);
 
-  /* ── Load the website workspace on mount / id change ────────────────── */
+  /* ── Load the website workspace on mount / id change ──────────────────
+     A failed load is captured in `loadError` so the Editor can render a
+     recoverable error screen with a Retry button instead of spinning
+     forever (the original symptom when the backend threw
+     "next is not a function"). The setState calls live inside the async
+     .catch callback (and the retry event handler), never synchronously in
+     the effect body, so they don't trip react-hooks/set-state-in-effect. */
+  const [loadError, setLoadError] = useState(null);
+
   useEffect(() => {
     if (!codeId) return;
     dispatch(getWebsiteById(codeId))
       .unwrap()
       .catch((err) => {
-        toast.error(err || "Failed to load website workspace.");
+        const message = err || "Failed to load website workspace.";
+        setLoadError(message);
+        toast.error(message);
+      });
+  }, [codeId, dispatch]);
+
+  const handleRetry = useCallback(() => {
+    if (!codeId) return;
+    setLoadError(null);
+    dispatch(getWebsiteById(codeId))
+      .unwrap()
+      .catch((err) => {
+        const message = err || "Failed to load website workspace.";
+        setLoadError(message);
+        toast.error(message);
       });
   }, [codeId, dispatch]);
 
@@ -146,6 +168,8 @@ const EditorPage = () => {
       isSaving={isSaving}
       selectedTheme={selectedTheme}
       onThemeChange={handleThemeChange}
+      loadError={loadError}
+      onRetry={handleRetry}
     />
   );
 };

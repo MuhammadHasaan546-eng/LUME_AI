@@ -3,7 +3,7 @@ import ExpressError from "../utils/ExpressError.js";
 import wrapAsync from "../utils/wrapAsync.js";
 import ApiResponse from "../utils/ApiResponse.js";
 
-export const getCurrentUser = wrapAsync(async (req, res) => {
+export const getCurrentUser = wrapAsync(async (req, res, next) => {
   if (!req.user) {
     throw new ExpressError("Unauthorized", 401);
   }

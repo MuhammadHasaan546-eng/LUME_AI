@@ -5,7 +5,7 @@ import ApiResponse from "../utils/ApiResponse.js";
 import ExpressError from "../utils/ExpressError.js";
 import wrapAsync from "../utils/wrapAsync.js";
 
-export const createCheckoutSession = wrapAsync(async (req, res) => {
+export const createCheckoutSession = wrapAsync(async (req, res, next) => {
   const { planType, billingPeriod = "monthly" } = req.body;
   const userId = req.user.id;
   const plan = STRIPE_PLANS[planType];
@@ -95,7 +95,7 @@ export const createCheckoutSession = wrapAsync(async (req, res) => {
 
 export const billing_controller = createCheckoutSession;
 
-export const verifyCheckoutSession = wrapAsync(async (req, res) => {
+export const verifyCheckoutSession = wrapAsync(async (req, res, next) => {
   const { sessionId } = req.query;
   const userId = req.user.id;
 
@@ -128,19 +128,17 @@ export const verifyCheckoutSession = wrapAsync(async (req, res) => {
 
   const user = await User.findById(userId);
 
-  res
-    .status(200)
-    .json(
-      new ApiResponse(
-        200,
-        {
-          user,
-          sessionStatus: session.status,
-          paymentStatus: session.payment_status,
-        },
-        "Checkout session verified successfully",
-      ),
-    );
+  res.status(200).json(
+    new ApiResponse(
+      200,
+      {
+        user,
+        sessionStatus: session.status,
+        paymentStatus: session.payment_status,
+      },
+      "Checkout session verified successfully",
+    ),
+  );
 });
 
 const syncSubscriptionToUser = async (subscription) => {

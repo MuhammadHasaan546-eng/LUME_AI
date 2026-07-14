@@ -31,7 +31,7 @@ function buildSlug(name) {
 }
 
 // ── Generate a component via the 4-agent pipeline ──
-export const generateComponentHandler = wrapAsync(async (req, res) => {
+export const generateComponentHandler = wrapAsync(async (req, res, next) => {
   const { prompt } = req.body;
 
   if (!prompt) {
@@ -97,7 +97,7 @@ export const generateComponentHandler = wrapAsync(async (req, res) => {
 });
 
 // ── List all components for the authenticated user ──
-export const getUserComponents = wrapAsync(async (req, res) => {
+export const getUserComponents = wrapAsync(async (req, res, next) => {
   const components = await Component.find({ user: req.user.id })
     .select("componentName slug prompt createdAt updatedAt")
     .sort({ createdAt: -1 });
@@ -106,7 +106,7 @@ export const getUserComponents = wrapAsync(async (req, res) => {
 });
 
 // ── Fetch a single component by id ──
-export const getComponentById = wrapAsync(async (req, res) => {
+export const getComponentById = wrapAsync(async (req, res, next) => {
   const { componentId } = req.params;
 
   const component = await Component.findById(componentId);
@@ -122,7 +122,7 @@ export const getComponentById = wrapAsync(async (req, res) => {
 });
 
 // ── Delete a component ──
-export const deleteComponent = wrapAsync(async (req, res) => {
+export const deleteComponent = wrapAsync(async (req, res, next) => {
   const { componentId } = req.params;
 
   const component = await Component.findById(componentId);

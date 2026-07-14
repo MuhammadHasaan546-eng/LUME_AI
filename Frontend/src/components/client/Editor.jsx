@@ -30,6 +30,8 @@
  * @param {boolean}      isLoading         - AI / deploy loading flag
  * @param {string}       selectedTheme     - "light" | "dark" | "system"
  * @param {(t:string)=>void} onThemeChange - theme switch callback
+ * @param {string|null}  loadError         - workspace load error (null while loading)
+ * @param {()=>void}     onRetry           - re-fetch the workspace after a load error
  * ============================================================================
  */
 import React, {
@@ -41,6 +43,7 @@ import React, {
 } from "react";
 import { motion as framerMotion, AnimatePresence } from "framer-motion";
 import {
+  AlertTriangle,
   ArrowLeft,
   ArrowUp,
   ArrowDown,
@@ -297,6 +300,8 @@ function Editor({
   isSaving = false,
   selectedTheme = "system",
   onThemeChange = null,
+  loadError = null,
+  onRetry = null,
 }) {
   /* ── pageData state (controlled/uncontrolled) ─────────────────────── */
 
@@ -523,9 +528,56 @@ function Editor({
     [updatePageData],
   );
 
-  /* ── Loading state (pageData not yet available) ──────────────────── */
+  /* ── Loading / error state (pageData not yet available) ──────────── */
 
   if (!initialPageData) {
+    // Load failed → render a recoverable error screen with a Retry action
+    // instead of spinning forever. This is what unblocks the editor page
+    // when the backend rejects the workspace fetch (e.g. the historical
+    // "next is not a function" Mongoose pre-hook crash, a 500, or a
+    // network failure). Without this branch the page white-screens on a
+    // null pageData because there is no other render path.
+    if (loadError) {
+      return (
+        <div className="flex h-screen w-full items-center justify-center bg-background">
+          <div className="flex max-w-md flex-col items-center gap-4 px-6 text-center">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full border border-red-500/30 bg-red-500/10">
+              <AlertTriangle className="h-6 w-6 text-red-500" />
+            </div>
+            <div className="space-y-1">
+              <h2 className="text-sm font-semibold text-foreground">
+                Couldn’t load the workspace
+              </h2>
+              <p className="font-mono text-[11px] leading-relaxed text-zinc-400">
+                {loadError}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              {onRetry && (
+                <button
+                  onClick={onRetry}
+                  className="flex items-center gap-1.5 rounded-xl border border-[#4C7294]/30 bg-[#4C7294]/5 px-4 py-2 text-xs font-semibold text-[#4C7294] transition-all hover:bg-[#4C7294]/10"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  Retry
+                </button>
+              )}
+              {onBack && (
+                <button
+                  onClick={onBack}
+                  className="flex items-center gap-1.5 rounded-xl border border-border/60 bg-muted/40 px-4 py-2 text-xs font-semibold text-foreground transition-all hover:bg-muted/80"
+                >
+                  <ArrowLeft className="h-3.5 w-3.5" />
+                  Back
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Still loading — show the spinner.
     return (
       <div className="flex h-screen w-full items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-3">

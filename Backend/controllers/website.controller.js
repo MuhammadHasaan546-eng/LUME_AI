@@ -136,7 +136,7 @@ function extractThumbnailFromPageData(pageData) {
   return "";
 }
 
-export const generateWebSite = wrapAsync(async (req, res) => {
+export const generateWebSite = wrapAsync(async (req, res, next) => {
   const { prompt } = req.body;
 
   if (!prompt) {
@@ -247,7 +247,7 @@ export const generateWebSite = wrapAsync(async (req, res) => {
   }
 });
 
-export const updateWebsite = wrapAsync(async (req, res) => {
+export const updateWebsite = wrapAsync(async (req, res, next) => {
   const { websiteId, prompt } = req.body;
 
   if (!websiteId || !prompt) {
@@ -357,7 +357,7 @@ export const updateWebsite = wrapAsync(async (req, res) => {
  *
  * Expects: { websiteId, pageData } — validated by savePageDataValidation.
  */
-export const savePageData = wrapAsync(async (req, res) => {
+export const savePageData = wrapAsync(async (req, res, next) => {
   const { websiteId, pageData } = req.body;
 
   const website = await Website.findById(websiteId);
@@ -404,7 +404,7 @@ export const savePageData = wrapAsync(async (req, res) => {
   );
 });
 
-export const getUserWebsites = wrapAsync(async (req, res) => {
+export const getUserWebsites = wrapAsync(async (req, res, next) => {
   const websites = await Website.find({ user: req.user.id })
     .select("title slug pageData deployed deployedUrl createdAt updatedAt")
     .sort({ createdAt: -1 });
@@ -425,8 +425,15 @@ export const getUserWebsites = wrapAsync(async (req, res) => {
   return res.status(200).json(new ApiResponse(200, list));
 });
 
-export const getWebsiteById = wrapAsync(async (req, res) => {
+export const getWebsiteById = wrapAsync(async (req, res, next) => {
   const { websiteId } = req.params;
+
+  // Validate the ObjectId BEFORE hitting the DB. An invalid id (e.g. a stray
+  // path segment) would otherwise throw a Mongoose CastError, which has no
+  // statusCode and surfaces as an opaque 500. This returns a clean 400.
+  if (!mongoose.isValidObjectId(websiteId)) {
+    throw new ExpressError("Invalid website ID", 400);
+  }
 
   const website = await Website.findById(websiteId);
   if (!website) {
@@ -443,7 +450,7 @@ export const getWebsiteById = wrapAsync(async (req, res) => {
 // PUBLIC endpoint — returns all deployed websites for the showcase gallery.
 // No authentication required. Only lightweight metadata is returned
 // (title, slug, deployedUrl, thumbnail, createdAt + creator name/avatar).
-export const getShowcaseWebsites = wrapAsync(async (req, res) => {
+export const getShowcaseWebsites = wrapAsync(async (req, res, next) => {
   const websites = await Website.find({ deployed: true })
     .populate("user", "name avatar")
     .select("title slug pageData deployedUrl createdAt user")
@@ -466,7 +473,7 @@ export const getShowcaseWebsites = wrapAsync(async (req, res) => {
     .json(new ApiResponse(200, showcase, "Showcase websites fetched"));
 });
 
-export const getLiveWebsite = wrapAsync(async (req, res) => {
+export const getLiveWebsite = wrapAsync(async (req, res, next) => {
   const { websiteId } = req.params;
 
   const website = await Website.findById(websiteId).select(
@@ -514,7 +521,7 @@ export const getLiveWebsite = wrapAsync(async (req, res) => {
  *    is already deleted we simply return success, so a retried request after
  *    a lost response does not surface a confusing 404 to the user.
  */
-export const deleteWebsite = wrapAsync(async (req, res) => {
+export const deleteWebsite = wrapAsync(async (req, res, next) => {
   const { websiteId } = req.params;
 
   if (!mongoose.isValidObjectId(websiteId)) {
@@ -557,7 +564,7 @@ export const deleteWebsite = wrapAsync(async (req, res) => {
     .json(new ApiResponse(200, { websiteId }, "Website deleted successfully"));
 });
 
-export const deployWebsite = wrapAsync(async (req, res) => {
+export const deployWebsite = wrapAsync(async (req, res, next) => {
   const { websiteId } = req.params;
   const { pageData } = req.body || {};
 
