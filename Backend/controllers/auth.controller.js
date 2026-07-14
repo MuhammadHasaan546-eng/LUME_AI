@@ -18,19 +18,29 @@ export const googleAuth = wrapAsync(async (req, res) => {
     await user.save();
     isNewUser = true;
   }
-  
+
   const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
     expiresIn: "7d",
   });
-  
+
   res.cookie("token", token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    maxAge: 7 * 24 * 60 * 60 * 1000,
+
+    secure: process.env.NODE_ENV === "production" || true,
+
+    sameSite: "none",
+
+    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
   });
-  
-  res.status(200).json(new ApiResponse(200, { token, user }, isNewUser ? "User created successfully" : "User logged in successfully"));
+  res
+    .status(200)
+    .json(
+      new ApiResponse(
+        200,
+        { token, user },
+        isNewUser ? "User created successfully" : "User logged in successfully",
+      ),
+    );
 });
 
 export const logout = wrapAsync(async (req, res) => {
