@@ -47,7 +47,6 @@ export const logout = createAsyncThunk("auth/logout", async (_, thunkAPI) => {
   } catch (error) {
     const message = error.response.data.message || "Server side error";
 
-    console.error("Logout Error:", message);
     return thunkAPI.rejectWithValue(message);
   }
 });

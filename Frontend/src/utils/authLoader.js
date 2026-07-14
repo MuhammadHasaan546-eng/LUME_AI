@@ -33,9 +33,7 @@ export const authLoader = async () => {
     inflight = store
       .dispatch(getCurrentUser())
       .unwrap()
-      .catch((error) => {
-        console.log("User not logged in", error);
-      })
+      .catch((error) => {})
       .finally(() => {
         inflight = null;
       });

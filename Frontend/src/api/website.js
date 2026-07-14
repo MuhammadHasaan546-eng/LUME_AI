@@ -82,7 +82,6 @@ export const savePageData = createAsyncThunk(
       return res.data;
     } catch (error) {
       const message = getErrorMessage(error, "Failed to save page data");
-      console.error("Save Page Data Error:", message);
       return rejectWithValue(message);
     }
   },

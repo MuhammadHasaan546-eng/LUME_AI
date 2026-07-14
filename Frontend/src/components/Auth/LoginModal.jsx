@@ -26,7 +26,6 @@ const LoginModal = ({ children }) => {
   const handleGoogleLogin = async () => {
     try {
       const result = await signInWithPopup(auth, provider);
-      console.log(result.user);
 
       const userData = {
         email: result.user.email,
@@ -41,7 +40,6 @@ const LoginModal = ({ children }) => {
       setOpen(false);
       toast.success("Logged in successfully!");
     } catch (error) {
-      console.log("Login error:", error);
       toast.error("Failed to log in.");
     }
   };

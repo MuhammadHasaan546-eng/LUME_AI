@@ -21,7 +21,6 @@ export const getCurrentUser = createAsyncThunk(
         error?.response?.data?.message ||
         error?.message ||
         "Failed to fetch user.";
-      console.error("Get Current User Error:", message);
       return thunkAPI.rejectWithValue(message);
     }
   },
